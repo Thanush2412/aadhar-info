@@ -363,121 +363,126 @@ export default function UnifiedKycPortal() {
     }
   }
 
-  const autoDetectLocation = () => {
-    setDetectingLoc(true)
-    setLocationError("")
-
-    const resolveCoordinates = async (lat: number, lng: number) => {
-      try {
-        const res = await fetch(`/api/verify/reverse-geocode?lat=${lat}&lng=${lng}`)
-        const geoData = await res.json()
-        const results = geoData.results || geoData.geocodingResults
-        if (geoData && (geoData.status === "ok" || geoData.status === "success") && results && results.length > 0) {
-          const result = results[0]
-          const comps = result.address_components || []
-          
-          let houseNumber = ""
-          let road = ""
-          let sublocality = ""
-          let neighborhood = ""
-          let city = ""
-          let state = ""
-          let postcode = ""
-          
-          for (const comp of comps) {
-            const types = comp.types || []
-            if (types.includes("premise") || types.includes("subpremise") || types.includes("street_number") || types.includes("house_number") || types.includes("building")) {
-              houseNumber = comp.long_name
-            } else if (types.includes("route")) {
-              road = comp.long_name
-            } else if (types.includes("sublocality")) {
-              sublocality = comp.long_name
-            } else if (types.includes("neighborhood")) {
-              neighborhood = comp.long_name
-            } else if (types.includes("locality")) {
-              city = comp.long_name
-            } else if (types.includes("administrative_area_level_1")) {
-              state = comp.long_name
-            } else if (types.includes("postal_code")) {
-              postcode = comp.long_name
-            }
+  const performGeocoding = async (lat: number, lng: number, fillFormFields: boolean) => {
+    try {
+      const res = await fetch(`/api/verify/reverse-geocode?lat=${lat}&lng=${lng}`)
+      const geoData = await res.json()
+      const results = geoData.results || geoData.geocodingResults
+      if (geoData && (geoData.status === "ok" || geoData.status === "success") && results && results.length > 0) {
+        const result = results[0]
+        const comps = result.address_components || []
+        
+        let houseNumber = ""
+        let road = ""
+        let sublocality = ""
+        let neighborhood = ""
+        let city = ""
+        let state = ""
+        let postcode = ""
+        
+        for (const comp of comps) {
+          const types = comp.types || []
+          if (types.includes("premise") || types.includes("subpremise") || types.includes("street_number") || types.includes("house_number") || types.includes("building")) {
+            houseNumber = comp.long_name
+          } else if (types.includes("route")) {
+            road = comp.long_name
+          } else if (types.includes("sublocality")) {
+            sublocality = comp.long_name
+          } else if (types.includes("neighborhood")) {
+            neighborhood = comp.long_name
+          } else if (types.includes("locality")) {
+            city = comp.long_name
+          } else if (types.includes("administrative_area_level_1")) {
+            state = comp.long_name
+          } else if (types.includes("postal_code")) {
+            postcode = comp.long_name
           }
-          
-          if (!city) {
-            const localityComp = comps.find((c: any) => c.types.includes("administrative_area_level_2"))
-            if (localityComp) {
-              city = localityComp.long_name
-            }
+        }
+        
+        if (!city) {
+          const localityComp = comps.find((c: any) => c.types.includes("administrative_area_level_2"))
+          if (localityComp) {
+            city = localityComp.long_name
           }
+        }
 
-          const streetInfo = [road, sublocality, neighborhood].filter(Boolean).join(", ")
-          
+        const streetInfo = [road, sublocality, neighborhood].filter(Boolean).join(", ")
+        
+        if (fillFormFields) {
           setAddrFlatNo(houseNumber)
           setAddrStreet(streetInfo)
           setAddrCity(city)
           setAddrPin(postcode)
           setAddrState(state)
-          
-          const gpsDetails = {
-            city: city || "Unknown",
-            state: state || "Unknown",
-            postcode: postcode || "Unknown",
-            displayName: result.formatted_address || "Unknown"
-          }
-          setExistingLocation(JSON.stringify(gpsDetails))
-          setLocationError("")
-          
-          toast.success("Location coordinates resolved!", {
-            description: `Filled address for: ${gpsDetails.city}, ${gpsDetails.state}`
-          })
-          return true
         }
-      } catch (e: any) {
-        console.error("Error reverse-geocoding coordinates:", e)
-        setLocationError(`Reverse-geocode API failed: ${e.message || e}`)
+        
+        const gpsDetails = {
+          city: city || "Unknown",
+          state: state || "Unknown",
+          postcode: postcode || "Unknown",
+          displayName: result.formatted_address || "Unknown"
+        }
+        setExistingLocation(JSON.stringify(gpsDetails))
+        setLocationError("")
+        return gpsDetails
       }
-      return false
+    } catch (error) {
+      console.error("Geocoding resolution error:", error)
     }
+    return null
+  }
 
-    const runIpFallback = async (gpsErrorMsg?: string) => {
-      console.warn("Attempting IP-based Geolocation fallback...")
-      try {
-        const res = await fetch("https://ipwho.is/")
-        const data = await res.json()
-        if (data && data.success) {
-          const gpsDetails = {
-            city: data.city || "Unknown",
-            state: data.region || "Unknown",
-            postcode: data.postal || "Unknown",
-            displayName: `${data.city || ""}, ${data.region || ""}, ${data.country || ""}`
-          }
+  const performIpGeocoding = async (fillFormFields: boolean) => {
+    try {
+      const res = await fetch("https://ipwho.is/")
+      const data = await res.json()
+      if (data && data.success) {
+        const gpsDetails = {
+          city: data.city || "Unknown",
+          state: data.region || "Unknown",
+          postcode: data.postal || "Unknown",
+          displayName: `${data.city || ""}, ${data.region || ""}, ${data.country || ""}`
+        }
+        if (fillFormFields) {
           setAddrCity(data.city || "")
           setAddrState(data.region || "")
           setAddrPin(data.postal || "")
-          setExistingLocation(JSON.stringify(gpsDetails))
-          setLocationError("")
-          toast.success("Location resolved via IP Geolocation!", {
-            description: `Filled address for: ${gpsDetails.city}, ${gpsDetails.state}`
-          })
-          setDetectingLoc(false)
-          return
-        } else {
-          setLocationError(data.message || "IP lookup returned success: false")
         }
-      } catch (e: any) {
-        console.error("IP Geolocation fallback failed:", e)
-        setLocationError(`GPS block: ${gpsErrorMsg || "insecure"}. IP fallback fail: ${e.message || e}`)
+        setExistingLocation(JSON.stringify(gpsDetails))
+        setLocationError("")
+        return gpsDetails
+      } else {
+        setLocationError(data.message || "IP lookup returned success: false")
       }
-      toast.error("Location detection failed", {
-        description: "Please check your internet connection or choose city manually."
-      })
+    } catch (error: any) {
+      console.error("IP geocoding resolution error:", error)
+      setLocationError(`IP fallback failed: ${error.message || error}`)
+    }
+    return null
+  }
+
+  const autoDetectLocation = () => {
+    setDetectingLoc(true)
+    setLocationError("")
+
+    const runIpFallback = async () => {
+      const details = await performIpGeocoding(true)
+      if (details) {
+        toast.success("Location resolved via IP Geolocation!", {
+          description: `Filled address for: ${details.city}, ${details.state}`
+        })
+      } else {
+        toast.error("Location detection failed", {
+          description: "Please check your internet connection or choose city manually."
+        })
+      }
       setDetectingLoc(false)
     }
 
     const isInsecureNetwork = typeof window !== "undefined" && !window.isSecureContext && window.location.hostname !== "localhost"
 
     if (isInsecureNetwork) {
-      runIpFallback("HTTP origin blocked GPS")
+      runIpFallback()
     } else if (navigator.geolocation) {
       const options = {
         enableHighAccuracy: true,
@@ -487,37 +492,41 @@ export default function UnifiedKycPortal() {
 
       navigator.geolocation.getCurrentPosition(
         async (position) => {
-          const success = await resolveCoordinates(position.coords.latitude, position.coords.longitude)
-          if (!success) {
-            await runIpFallback("Reverse-geocode parse failure")
+          const details = await performGeocoding(position.coords.latitude, position.coords.longitude, true)
+          if (!details) {
+            await runIpFallback()
           } else {
+            toast.success("Location coordinates resolved!", {
+              description: `Filled address for: ${details.city}, ${details.state}`
+            })
             setDetectingLoc(false)
           }
         },
         async (error) => {
-          console.warn("GPS Geolocation failed, trying low accuracy / IP fallback...", error.message)
-          if (options.enableHighAccuracy) {
-            options.enableHighAccuracy = false
-            navigator.geolocation.getCurrentPosition(
-              async (pos) => {
-                const success = await resolveCoordinates(pos.coords.latitude, pos.coords.longitude)
-                if (!success) await runIpFallback(error.message)
-                else setDetectingLoc(false)
-              },
-              async (err) => {
-                console.warn("Low accuracy GPS failed, falling back to IP Geolocation:", err.message)
-                await runIpFallback(err.message)
-              },
-              options
-            )
-          } else {
-            await runIpFallback(error.message)
-          }
+          console.warn("GPS Geolocation failed, trying low accuracy fallback...", error.message)
+          options.enableHighAccuracy = false
+          navigator.geolocation.getCurrentPosition(
+            async (pos) => {
+              const details = await performGeocoding(pos.coords.latitude, pos.coords.longitude, true)
+              if (!details) await runIpFallback()
+              else {
+                toast.success("Location coordinates resolved!", {
+                  description: `Filled address for: ${details.city}, ${details.state}`
+                })
+                setDetectingLoc(false)
+              }
+            },
+            async (err) => {
+              console.warn("Low accuracy GPS failed, falling back to IP Geolocation:", err.message)
+              await runIpFallback()
+            },
+            options
+          )
         },
         options
       )
     } else {
-      runIpFallback("Geolocation API unsupported")
+      runIpFallback()
     }
   }
 
@@ -720,95 +729,21 @@ export default function UnifiedKycPortal() {
   useEffect(() => {
     let watchId: number | null = null;
     const isInsecureNetwork = typeof window !== "undefined" && !window.isSecureContext && window.location.hostname !== "localhost";
-    
-    const resolveBackgroundCoordinates = async (lat: number, lng: number) => {
-      try {
-        const res = await fetch(`/api/verify/reverse-geocode?lat=${lat}&lng=${lng}`)
-        const geoData = await res.json()
-        const results = geoData.results || geoData.geocodingResults
-        if (geoData && (geoData.status === "ok" || geoData.status === "success") && results && results.length > 0) {
-          const result = results[0]
-          const comps = result.address_components || []
-          
-          let city = ""
-          let state = ""
-          let postcode = ""
-          let houseNumber = ""
-          let road = ""
-          let sublocality = ""
-          let neighborhood = ""
-          
-          for (const comp of comps) {
-            const types = comp.types || []
-            if (types.includes("locality")) {
-              city = comp.long_name
-            } else if (types.includes("administrative_area_level_1")) {
-              state = comp.long_name
-            } else if (types.includes("postal_code")) {
-              postcode = comp.long_name
-            } else if (types.includes("premise") || types.includes("subpremise") || types.includes("street_number") || types.includes("house_number") || types.includes("building")) {
-              houseNumber = comp.long_name
-            } else if (types.includes("route")) {
-              road = comp.long_name
-            } else if (types.includes("sublocality")) {
-              sublocality = comp.long_name
-            } else if (types.includes("neighborhood")) {
-              neighborhood = comp.long_name
-            }
-          }
-          
-          if (!city) {
-            const localityComp = comps.find((c: any) => c.types.includes("administrative_area_level_2"))
-            if (localityComp) {
-              city = localityComp.long_name
-            }
-          }
-
-          const gpsDetails = {
-            city: city || "Unknown",
-            state: state || "Unknown",
-            postcode: postcode || "Unknown",
-            displayName: result.formatted_address || "Unknown"
-          }
-          setExistingLocation(JSON.stringify(gpsDetails))
-          return true
-        }
-      } catch (e) {
-        console.error("Background reverse-geocode error:", e)
-      }
-      return false
-    }
 
     const runBackgroundIpFallback = async (gpsErrorMsg?: string) => {
-      try {
-        const res = await fetch("https://ipwho.is/")
-        const data = await res.json()
-        if (data && data.success) {
-          const gpsDetails = {
-            city: data.city || "Unknown",
-            state: data.region || "Unknown",
-            postcode: data.postal || "Unknown",
-            displayName: `${data.city || ""}, ${data.region || ""}, ${data.country || ""}`
-          }
-          setExistingLocation(JSON.stringify(gpsDetails))
-          setLocationError("")
-        } else {
-          setLocationError(data.message || "IP lookup returned success: false")
-        }
-      } catch (e: any) {
-        console.error("Background IP Geolocation fallback failed:", e)
-        setLocationError(`GPS block: ${gpsErrorMsg || "insecure"}. IP fallback fail: ${e.message || e}`)
-      } finally {
-        setLocationDetectingBg(false)
+      const details = await performIpGeocoding(false)
+      if (!details && gpsErrorMsg) {
+        setLocationError(`GPS block: ${gpsErrorMsg}. IP fallback failed.`)
       }
+      setLocationDetectingBg(false)
     }
 
     if (navigator.geolocation && !isInsecureNetwork) {
       watchId = navigator.geolocation.watchPosition(
         async (position) => {
           console.log("Real-time GPS update:", position.coords.latitude, position.coords.longitude, "accuracy:", position.coords.accuracy)
-          const success = await resolveBackgroundCoordinates(position.coords.latitude, position.coords.longitude)
-          if (!success) {
+          const details = await performGeocoding(position.coords.latitude, position.coords.longitude, false)
+          if (!details) {
             await runBackgroundIpFallback("Reverse-geocode parse failure")
           } else {
             setLocationDetectingBg(false)
