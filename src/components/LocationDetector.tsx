@@ -49,6 +49,7 @@ export default function LocationDetector({
 }: LocationDetectorProps) {
   
   const isInitialMount = useRef(true)
+  const lastCoords = useRef<{ lat: number; lng: number } | null>(null)
 
   // 1. Reverse Geocoding with Ola Maps
   const performGeocoding = async (lat: number, lng: number, fillFormFields: boolean) => {
@@ -144,126 +145,95 @@ export default function LocationDetector({
     return null
   }
 
-  // 2. IP Geocoding Fallback
-  const performIpGeocoding = async (fillFormFields: boolean) => {
-    try {
-      const res = await fetch("https://ipwho.is/")
-      const data = await res.json()
-      if (data && data.success) {
-        const candidates = [data.city, data.region].filter(Boolean)
-        const gpsDetails = {
-          city: data.city || "Unknown",
-          candidates: candidates,
-          state: data.region || "Unknown",
-          postcode: data.postal || "Unknown",
-          displayName: `${data.city || ""}, ${data.region || ""}, ${data.country || ""}`
-        }
-        
-        const shouldFill = fillFormFields || (!addrCity && !addrState && !addrPin)
-        if (shouldFill) {
-          setAddrCity(data.city || "")
-          setAddrState(data.region || "")
-          setAddrPin(data.postal || "")
-        }
-        setExistingLocation(JSON.stringify(gpsDetails))
-        setLocationError("")
-        return gpsDetails
-      } else {
-        setLocationError(data.message || "IP lookup returned success: false")
-      }
-    } catch (error: any) {
-      console.error("IP geocoding resolution error:", error)
-      setLocationError(`IP fallback failed: ${error.message || error}`)
-    }
-    return null
-  }
-
-  // 3. Unified Location Detector — shared by watch & manual triggers
+  // 2. Unified Location Detector — only uses browser Geolocation API
   const triggerLocationDetect = async (fillFormFields: boolean): Promise<any> => {
     setDetectingLoc(true)
     setLocationError("")
 
-    const runIpFallback = async () => {
-      const details = await performIpGeocoding(fillFormFields)
-      if (details) {
-        if (fillFormFields) toast.success("Location resolved via IP!", {
-          description: `${details.city}, ${details.state}`
-        })
-      } else {
-        toast.error("Location detection failed", {
-          description: "Check internet connection or enter city manually."
-        })
-      }
-      setDetectingLoc(false)
-      return details
-    }
-
     const isInsecureNetwork = typeof window !== "undefined" && !window.isSecureContext && window.location.hostname !== "localhost"
 
     if (isInsecureNetwork) {
-      return runIpFallback()
-    } else if (navigator.geolocation) {
-      return new Promise((resolve) => {
-        navigator.geolocation.getCurrentPosition(
-          async (position) => {
-            const details = await performGeocoding(position.coords.latitude, position.coords.longitude, fillFormFields)
-            if (!details) {
-              const fb = await runIpFallback()
-              resolve(fb)
-            } else {
-              if (fillFormFields) toast.success("Coordinates resolved!", {
-                description: `${details.city}, ${details.state}`
-              })
-              setDetectingLoc(false)
-              resolve(details)
-            }
-          },
-          async (error) => {
-            console.warn("GPS failed, falling back to IP:", error.message)
-            const fb = await runIpFallback()
-            resolve(fb)
-          },
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-        )
-      })
-    } else {
-      return runIpFallback()
+      const errMsg = "HTTPS is required for GPS mobile verification."
+      setLocationError(errMsg)
+      toast.error(errMsg)
+      setDetectingLoc(false)
+      return null
     }
+
+    if (!navigator.geolocation) {
+      const errMsg = "Geolocation is not supported by this browser."
+      setLocationError(errMsg)
+      toast.error(errMsg)
+      setDetectingLoc(false)
+      return null
+    }
+
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          lastCoords.current = { lat: position.coords.latitude, lng: position.coords.longitude }
+          const details = await performGeocoding(position.coords.latitude, position.coords.longitude, fillFormFields)
+          if (!details) {
+            setLocationError("Failed to resolve GPS coordinates via Ola Maps.")
+            toast.error("Location resolution failed.")
+          } else {
+            if (fillFormFields) toast.success("Coordinates resolved!", {
+              description: `${details.city}, ${details.state}`
+            })
+            setLocationError("")
+          }
+          setDetectingLoc(false)
+          resolve(details)
+        },
+        async (error) => {
+          console.warn("GPS failed:", error.message)
+          const errMsg = `GPS error: ${error.message || "access denied"}.`
+          setLocationError(errMsg)
+          toast.error(errMsg, {
+            description: "Please check your browser location permissions."
+          })
+          setDetectingLoc(false)
+          resolve(null)
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      )
+    })
   }
 
-  // 4. Background GPS Watcher on Page Load
+  // 3. Background GPS Watcher on Page Load (No IP fallback)
   useEffect(() => {
     let watchId: number | null = null
     const isInsecureNetwork = typeof window !== "undefined" && !window.isSecureContext && window.location.hostname !== "localhost"
 
-    const runBackgroundIpFallback = async (gpsErrorMsg?: string) => {
-      const details = await performIpGeocoding(false)
-      if (!details && gpsErrorMsg) {
-        setLocationError(`GPS block: ${gpsErrorMsg}. IP fallback failed.`)
-      }
+    if (isInsecureNetwork) {
+      setLocationError("HTTPS is required for background GPS.")
       setLocationDetectingBg(false)
+      return
     }
 
-    if (navigator.geolocation && !isInsecureNetwork) {
+    if (navigator.geolocation) {
       watchId = navigator.geolocation.watchPosition(
         async (position) => {
           console.log("Real-time GPS update:", position.coords.latitude, position.coords.longitude, "accuracy:", position.coords.accuracy)
+          lastCoords.current = { lat: position.coords.latitude, lng: position.coords.longitude }
           const details = await performGeocoding(position.coords.latitude, position.coords.longitude, false)
           if (!details) {
-            await runBackgroundIpFallback("Reverse-geocode parse failure")
+            setLocationError("Background Ola Maps geocoding failed.")
           } else {
-            setLocationDetectingBg(false)
             setLocationError("")
           }
+          setLocationDetectingBg(false)
         },
         async (error) => {
-          console.warn("Real-time GPS watcher failed, trying IP Geolocation fallback:", error.message || error)
-          await runBackgroundIpFallback(error.message)
+          console.warn("Background GPS watcher failed:", error.message || error)
+          setLocationError(`GPS verification required: ${error.message || "access denied"}`)
+          setLocationDetectingBg(false)
         },
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       )
     } else {
-      runBackgroundIpFallback(isInsecureNetwork ? "HTTP origin blocked GPS" : "Geolocation API unsupported")
+      setLocationError("Geolocation API is unsupported in this browser.")
+      setLocationDetectingBg(false)
     }
 
     return () => {
@@ -273,14 +243,21 @@ export default function LocationDetector({
     }
   }, [])
 
-  // 5. Watch for manual refresh triggers
+  // 4. Watch for manual refresh triggers
   useEffect(() => {
     if (isInitialMount.current) {
       isInitialMount.current = false
       return
     }
     if (refreshTrigger > 0) {
-      triggerLocationDetect(true)
+      if (lastCoords.current) {
+        setDetectingLoc(true)
+        performGeocoding(lastCoords.current.lat, lastCoords.current.lng, true).finally(() => {
+          setDetectingLoc(false)
+        })
+      } else {
+        triggerLocationDetect(true)
+      }
     }
   }, [refreshTrigger])
 
