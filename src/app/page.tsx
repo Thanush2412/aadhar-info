@@ -120,6 +120,11 @@ export default function UnifiedKycPortal() {
   const [locationDetectingBg, setLocationDetectingBg] = useState(true)
   const [locationError, setLocationError] = useState("")
 
+  // AI Address Matching States
+  const [isAddressMatching, setIsAddressMatching] = useState(false)
+  const [addressMatchError, setAddressMatchError] = useState<string | null>(null)
+  const [addressMatchBypassed, setAddressMatchBypassed] = useState(false)
+
   // Auto-format Aadhaar: XXXX XXXX XXXX
   const handleAadhaarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/\D/g, "").slice(0, 12)
@@ -519,6 +524,37 @@ export default function UnifiedKycPortal() {
   // Send e-KYC Data to Backend API
   // Send e-KYC Data to Backend API
   const submitVerificationData = async (cleanAadhaar: string, resolvedLocation: string) => {
+    // Check if we need to verify typed address against Aadhaar address via AI
+    if (aadhaarDocAddress && aadhaarDocAddress !== "Bypassed - Test Mode" && !addressMatchBypassed) {
+      setIsAddressMatching(true)
+      try {
+        const matchResponse = await fetch("/api/verify/match-address", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            typedAddress,
+            aadhaarDocAddress
+          })
+        })
+        const matchData = await matchResponse.json()
+        setIsAddressMatching(false)
+
+        if (matchData.success && !matchData.match) {
+          setAddressMatchError(matchData.reason || "Address matching failed.")
+          setLoading(false)
+          setLocationLoading(false)
+          return
+        }
+      } catch (error) {
+        setIsAddressMatching(false)
+        console.error("Failed to compare addresses:", error)
+        setAddressMatchError("Failed to verify address alignment with AI model. Connection failed.")
+        setLoading(false)
+        setLocationLoading(false)
+        return
+      }
+    }
+
     try {
       const response = await fetch("/api/verify/send-otp", {
         method: "POST",
@@ -1026,6 +1062,9 @@ export default function UnifiedKycPortal() {
     setShowOcrDetails(false)
     setIsOcrScanning(false)
     setOcrRequested(false)
+    setIsAddressMatching(false)
+    setAddressMatchError(null)
+    setAddressMatchBypassed(false)
   }
 
   const isFormValid = () => {
@@ -1542,6 +1581,66 @@ export default function UnifiedKycPortal() {
                             <Lock className="h-3 w-3 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
                             <span>Your city will be cross-validated against your registered address details and current GPS location.</span>
                           </div>
+
+                          {/* Address Matching Progress/Alerts */}
+                          {isAddressMatching && (
+                            <div className="p-4 bg-muted/30 border border-dashed border-rose-900/40 rounded-lg flex flex-col items-center justify-center gap-2 py-6 my-4 animate-in fade-in duration-300">
+                              <RefreshCw className="h-6 w-6 text-rose-700 dark:text-rose-500 animate-spin" />
+                              <p className="text-xs font-semibold text-foreground">Matching Entered Address against Aadhaar...</p>
+                              <p className="text-[10px] text-muted-foreground font-mono">Running semantic comparison via Gemini AI.</p>
+                            </div>
+                          )}
+
+                          {addressMatchError && (
+                            <div className="p-4 rounded-lg border text-left my-4 bg-rose-500/10 border-rose-500/30 text-rose-500 space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                              <div className="flex items-start gap-2.5">
+                                <ShieldAlert className="h-5 w-5 text-rose-500 mt-0.5 flex-shrink-0 animate-bounce" />
+                                <div>
+                                  <p className="text-xs font-bold uppercase tracking-wider">Security Flag: Address Mismatch</p>
+                                  <p className="text-[10px] text-muted-foreground mt-0.5 leading-normal">
+                                    The residential address details you entered do not match the address read from your Aadhaar card.
+                                  </p>
+                                  <div className="mt-3 p-3.5 bg-background/50 border border-rose-500/10 rounded-lg space-y-2 text-[10px] font-mono leading-relaxed">
+                                    <div>
+                                      <span className="font-bold text-muted-foreground">Extracted Aadhaar Address:</span>
+                                      <p className="text-rose-500/90 mt-0.5 font-sans leading-normal break-words">{aadhaarDocAddress}</p>
+                                    </div>
+                                    <div className="pt-2 border-t border-rose-500/10">
+                                      <span className="font-bold text-muted-foreground">User Typed Address:</span>
+                                      <p className="text-foreground/90 mt-0.5 font-sans leading-normal break-words">{typedAddress}</p>
+                                    </div>
+                                    <div className="pt-2 border-t border-rose-500/10">
+                                      <span className="font-bold text-muted-foreground">Reason:</span>
+                                      <p className="text-rose-400 font-sans leading-normal break-words">{addressMatchError}</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                <Button
+                                  type="button"
+                                  onClick={() => {
+                                    setAddressMatchBypassed(true)
+                                    setAddressMatchError(null)
+                                    toast.success("Address match bypassed for testing!")
+                                    const cleanAadhaar = aadhaarInput.replace(/\s+/g, "")
+                                    submitVerificationData(cleanAadhaar, existingLocation)
+                                  }}
+                                  className="text-[10px] h-9 bg-amber-600/20 hover:bg-amber-600/30 text-amber-500 border border-amber-500/20 font-semibold flex items-center justify-center gap-1.5 cursor-pointer rounded-lg"
+                                >
+                                  <Lock className="h-3.5 w-3.5" />
+                                  Bypass Address Check (Test Mode)
+                                </Button>
+                                <Button
+                                  type="button"
+                                  onClick={() => setAddressMatchError(null)}
+                                  className="text-[10px] h-9 bg-muted hover:bg-muted/80 text-foreground font-semibold flex items-center justify-center gap-1.5 cursor-pointer rounded-lg border border-border"
+                                >
+                                  Go Back &amp; Edit
+                                </Button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </motion.div>
                     ) : (
@@ -1555,7 +1654,7 @@ export default function UnifiedKycPortal() {
                     )}
                   </CardContent>
 
-                  {isDocumentVerified && (
+                  {isDocumentVerified && !addressMatchError && !isAddressMatching && (
                     <CardFooter className="pt-2">
                       <Button 
                         type="submit" 
