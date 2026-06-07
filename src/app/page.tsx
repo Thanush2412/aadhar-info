@@ -289,26 +289,31 @@ export default function UnifiedKycPortal() {
         const result = detailData.result
         const comps = result.address_components || []
         
-        let city = ""
+        let district = ""
+        let subdistrict = ""
+        let locality = ""
         let state = ""
         let postcode = ""
         
         for (const comp of comps) {
           const types = comp.types || []
+          const name = comp.long_name || ""
           if (types.includes("locality")) {
-            city = comp.long_name
+            locality = name
+          } else if (types.includes("administrative_area_level_2")) {
+            district = name
+          } else if (types.includes("administrative_area_level_3")) {
+            subdistrict = name
           } else if (types.includes("administrative_area_level_1")) {
-            state = comp.long_name
+            state = name
           } else if (types.includes("postal_code")) {
-            postcode = comp.long_name
+            postcode = name
           }
         }
         
-        if (!city) {
-          const localityComp = comps.find((c: any) => c.types.includes("administrative_area_level_2"))
-          if (localityComp) {
-            city = localityComp.long_name
-          }
+        let city = locality || district || subdistrict || ""
+        if (district && district !== city) {
+          city = district
         }
 
         if (!city) {
@@ -1216,25 +1221,16 @@ export default function UnifiedKycPortal() {
                             </div>
                           </div>
 
-                          <div className="space-y-1">
+                           <div className="space-y-1">
                             <p className="text-[10px] font-medium text-muted-foreground">State</p>
-                            <select
+                            <Input
+                              type="text"
                               required
                               value={addrState}
                               onChange={(e) => setAddrState(e.target.value)}
-                              className="w-full h-10 rounded-md border border-border bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-rose-700 dark:focus:ring-rose-500 cursor-pointer"
-                            >
-                              <option value="">Select state...</option>
-                              {[
-                                "Andhra Pradesh","Arunachal Pradesh","Assam","Bihar","Chhattisgarh",
-                                "Goa","Gujarat","Haryana","Himachal Pradesh","Jharkhand","Karnataka",
-                                "Kerala","Madhya Pradesh","Maharashtra","Manipur","Meghalaya","Mizoram",
-                                "Nagaland","Odisha","Punjab","Rajasthan","Sikkim","Tamil Nadu",
-                                "Telangana","Tripura","Uttar Pradesh","Uttarakhand","West Bengal",
-                                "Andaman and Nicobar Islands","Chandigarh","Dadra and Nagar Haveli and Daman and Diu",
-                                "Delhi","Jammu and Kashmir","Ladakh","Lakshadweep","Puducherry"
-                              ].map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
+                              placeholder="e.g. Tamil Nadu"
+                              className="bg-background border-border text-foreground text-sm h-10"
+                            />
                           </div>
 
                           <div className="flex items-start gap-1.5 pt-0.5 text-[10px] text-muted-foreground">
