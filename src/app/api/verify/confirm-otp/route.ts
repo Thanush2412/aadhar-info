@@ -60,23 +60,8 @@ export async function POST(request: Request) {
       return (addr || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     };
 
-    const normAadhaar = normalizeAddress(record.aadhaarDocAddress || '');
-    const normPan = normalizeAddress(record.panDocAddress || '');
-
-    // 1. Verify Parity: Aadhaar Address vs PAN Address
-    if (!normAadhaar || !normPan || normAadhaar !== normPan) {
-      updateRecord(id, {
-        status: 'FAILED',
-        locationMatchStatus: 'MISMATCHED',
-        ipAddress,
-        userAgent,
-        timestamp: new Date().toISOString()
-      });
-      return NextResponse.json(
-        { success: false, message: 'Document Address Mismatch: The Aadhaar and PAN addresses are not identical.' },
-        { status: 400 }
-      );
-    }
+    // 1. Verify Parity: Aadhaar Address vs PAN Address (Skipped as PAN Card is removed)
+    // We bypass this check to only verify GPS geolocation alignment.
 
     // 2. Verify GPS Geolocation Alignment
     let gpsCity = '';

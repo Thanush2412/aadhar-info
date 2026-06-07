@@ -59,19 +59,8 @@ export async function POST(request: Request) {
       return (addr || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     };
 
-    const normAadhaar = normalizeAddress(aadhaarDocAddress);
-    const normPan = normalizeAddress(panDocAddress);
-
-    // 1. Check Parity: Aadhaar Address vs PAN Address
-    if (!normAadhaar || !normPan || normAadhaar !== normPan) {
-      return NextResponse.json(
-        { 
-          success: false, 
-          message: 'Document Address Mismatch: The address extracted from your Aadhaar Card scan does not match your PAN registry address.' 
-        },
-        { status: 400 }
-      );
-    }
+    // 1. Check Parity: Aadhaar Address vs PAN Address (Skipped as PAN Card is removed)
+    // We bypass this check to only verify GPS geolocation alignment.
 
     // 2. Check GPS Geolocation Alignment
     let gpsCity = '';

@@ -77,16 +77,18 @@ export default function UnifiedKycPortal() {
   // Validation states
   const [isValidAadhaarNum, setIsValidAadhaarNum] = useState(false)
   const [showAadhaarError, setShowAadhaarError] = useState(false)
-  const [isPanValid, setIsPanValid] = useState(false)
+  const [isPanValid, setIsPanValid] = useState(true)
 
   // Aadhaar Scan upload states
   const [aadhaarFile, setAadhaarFile] = useState<{ name: string; size: number } | null>(null)
   const [aadhaarUploadProgress, setAadhaarUploadProgress] = useState(0)
   const [aadhaarUploading, setAadhaarUploading] = useState(false)
   const [aadhaarUploadComplete, setAadhaarUploadComplete] = useState(false)
+  const [aadhaarBase64, setAadhaarBase64] = useState("")
+  const [aadhaarMimeType, setAadhaarMimeType] = useState("")
   const aadhaarInputRef = useRef<HTMLInputElement>(null)
 
-  // PAN Scan upload states
+  // PAN Scan upload states (unused but kept for compiler compatibility)
   const [panFile, setPanFile] = useState<{ name: string; size: number } | null>(null)
   const [panUploadProgress, setPanUploadProgress] = useState(0)
   const [panUploading, setPanUploading] = useState(false)
@@ -198,6 +200,10 @@ export default function UnifiedKycPortal() {
     reader.onload = async () => {
       try {
         const base64Data = (reader.result as string).split(",")[1]
+        if (label === "Aadhaar scan") {
+          setAadhaarBase64(base64Data)
+          setAadhaarMimeType(selectedFile.type)
+        }
         setProgress(30)
         
         const response = await fetch(appsScriptUrl, {
@@ -540,17 +546,17 @@ export default function UnifiedKycPortal() {
         body: JSON.stringify({
           aadhaarNumber: cleanAadhaar,
           phoneNumber: phoneInput,
-          panNumber: panInput.toUpperCase(),
+          panNumber: "N/A",
           customAddress: typedAddress,
           customName: nameInput,
           customDob: dobInput.split('-').reverse().join('/'), // format YYYY-MM-DD to DD/MM/YYYY
           existingLocation: resolvedLocation,
           aadhaarDocName: aadhaarFile ? aadhaarFile.name : "aadhaar_unnamed.pdf",
           aadhaarDocSize: aadhaarFile ? `${(aadhaarFile.size / 1024).toFixed(1)} KB` : "0 KB",
-          panDocName: panFile ? panFile.name : "pan_unnamed.pdf",
-          panDocSize: panFile ? `${(panFile.size / 1024).toFixed(1)} KB` : "0 KB",
+          panDocName: "N/A",
+          panDocSize: "0 KB",
           aadhaarDocAddress,
-          panDocAddress
+          panDocAddress: "N/A"
         })
       })
       const data = await response.json()
@@ -869,92 +875,64 @@ export default function UnifiedKycPortal() {
     setIsDocumentVerified(same && gpsMatch)
   }
 
-  // Simulate OCR Address scan once both files are fully uploaded
+  // Real Gemini OCR Address scan once Aadhaar file is fully uploaded
   useEffect(() => {
-    if (aadhaarUploadComplete && panUploadComplete && !aadhaarDocAddress && !panDocAddress) {
+    if (aadhaarUploadComplete && aadhaarBase64 && !aadhaarDocAddress) {
       setIsOcrScanning(true)
-      const timer = setTimeout(() => {
+      
+      console.log("Calling Gemini OCR API via backend...")
+      fetch("/api/verify/ocr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageBase64: aadhaarBase64,
+          mimeType: aadhaarMimeType
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
         setIsOcrScanning(false)
         setShowOcrDetails(true)
-        
-        // Match user inputted values to construct initial extracted address
-        let currentCity = "Coimbatore"
-        let currentState = "Tamil Nadu"
-        let currentPin = "641014"
-        let currentFlat = "7/2A, Goldwins"
-        let currentStreet = "Athikuttai, Karuparampalayam Pirvu"
-
-        if (existingLocation) {
-          try {
-            const parsed = JSON.parse(existingLocation)
-            currentCity = parsed.city || currentCity
-            currentState = parsed.state || currentState
-            currentPin = parsed.postcode || currentPin
-            const parts = (parsed.displayName || "").split(",")
-            if (parts.length > 2) {
-              currentFlat = parts[0].trim()
-              currentStreet = parts.slice(1, 3).join(", ").trim()
-            }
-          } catch {}
-        }
-        
-        const resolvedAddr = `${currentFlat}, ${currentStreet}, ${currentCity}, ${currentState} - ${currentPin}`
-        setAadhaarDocAddress(resolvedAddr)
-        setPanDocAddress(resolvedAddr)
-
-        const same = checkAddressParity(resolvedAddr, resolvedAddr)
-        const gpsMatch = checkGpsAlignment(resolvedAddr, existingLocation)
-        const matches = same && gpsMatch
-        setIsDocumentVerified(matches)
-        
-        if (matches) {
-          // Pre-fill form address fields
-          setAddrFlatNo(currentFlat)
-          setAddrStreet(currentStreet)
-          setAddrCity(currentCity)
-          setAddrState(currentState)
-          setAddrPin(currentPin)
+        if (data.success && data.address) {
+          setAadhaarDocAddress(data.address)
+          const gpsMatch = checkGpsAlignment(data.address, existingLocation)
+          setIsDocumentVerified(gpsMatch)
           
-          toast.success("Document Addresses Verified Successfully!", {
-            description: "Extracted document addresses match your current GPS location. You can now complete the application form."
-          })
-        } else {
-          toast.error("Address Match Failed", {
-            description: "Document addresses do not match your current GPS location. Form editing is locked."
-          })
-        }
-      }, 1800)
-      return () => clearTimeout(timer)
-    }
-  }, [aadhaarUploadComplete, panUploadComplete, existingLocation])
-
-  // Reactively verify document address alignment when addresses or GPS location changes
-  useEffect(() => {
-    if (aadhaarDocAddress && panDocAddress) {
-      const same = checkAddressParity(aadhaarDocAddress, panDocAddress)
-      const gpsMatch = checkGpsAlignment(aadhaarDocAddress, existingLocation)
-      const matches = same && gpsMatch
-      setIsDocumentVerified(matches)
-
-      if (matches && (!addrCity || !addrState)) {
-        try {
-          if (existingLocation) {
-            const parsed = JSON.parse(existingLocation)
-            setAddrCity(parsed.city || "")
-            setAddrState(parsed.state || "")
-            setAddrPin(parsed.postcode || "")
-            const parts = (parsed.displayName || "").split(",")
-            if (parts.length > 2) {
-              setAddrFlatNo(parts[0].trim())
-              setAddrStreet(parts.slice(1, 3).join(", ").trim())
-            }
+          if (gpsMatch) {
+            toast.success("Aadhaar Address Verified Successfully!", {
+              description: "Extracted Aadhaar address aligns with your current GPS location."
+            })
+          } else {
+            toast.error("Aadhaar Address Match Failed", {
+              description: `Aadhaar address does not align with your physical location. Submission is locked.`
+            })
           }
-        } catch {}
-      }
+        } else {
+          toast.error("OCR Address Extraction Failed", {
+            description: data.error || "Could not read address from Aadhaar card. Ensure the scan is clear."
+          })
+          // Set a default to prevent locking the application completely if AI fails
+          setAadhaarDocAddress("Address Extraction Failed - Please retry")
+          setIsDocumentVerified(false)
+        }
+      })
+      .catch(err => {
+        setIsOcrScanning(false)
+        console.error("OCR API error:", err)
+        toast.error("OCR connection failed.")
+      })
+    }
+  }, [aadhaarUploadComplete, aadhaarBase64, existingLocation])
+
+  // Reactively verify document address alignment when Aadhaar address or GPS location changes
+  useEffect(() => {
+    if (aadhaarDocAddress) {
+      const gpsMatch = checkGpsAlignment(aadhaarDocAddress, existingLocation)
+      setIsDocumentVerified(gpsMatch)
     } else {
       setIsDocumentVerified(false)
     }
-  }, [aadhaarDocAddress, panDocAddress, existingLocation])
+  }, [aadhaarDocAddress, existingLocation])
 
   // Handle OTP Inputs focus shift
   const handleOtpChange = (index: number, val: string) => {
@@ -988,15 +966,15 @@ export default function UnifiedKycPortal() {
         body: JSON.stringify({ 
           aadhaarNumber: aadhaarInput.replace(/\s+/g, ""), 
           phoneNumber: phoneInput,
-          panNumber: panInput.toUpperCase(),
+          panNumber: "N/A",
           customAddress: typedAddress,
           existingLocation: existingLocation,
           aadhaarDocName: aadhaarFile ? aadhaarFile.name : "aadhaar_unnamed.pdf",
           aadhaarDocSize: aadhaarFile ? `${(aadhaarFile.size / 1024).toFixed(1)} KB` : "0 KB",
-          panDocName: panFile ? panFile.name : "pan_unnamed.pdf",
-          panDocSize: panFile ? `${(panFile.size / 1024).toFixed(1)} KB` : "0 KB",
+          panDocName: "N/A",
+          panDocSize: "0 KB",
           aadhaarDocAddress,
-          panDocAddress
+          panDocAddress: "N/A"
         })
       })
       const data = await response.json()
@@ -1057,10 +1035,10 @@ export default function UnifiedKycPortal() {
               dob: dobInput.split('-').reverse().join('/'),
               aadhaar: aadhaarInput,
               phone: phoneInput,
-              pan: panInput.toUpperCase(),
+              pan: "N/A",
               gpsAddress: typedAddress,
               aadhaarDocUrl: aadhaarDocUrl || "N/A",
-              panDocUrl: panDocUrl || "N/A",
+              panDocUrl: "N/A",
               txId: txId
             })
           }).then(res => res.json())
@@ -1125,9 +1103,7 @@ export default function UnifiedKycPortal() {
       addrState.trim().length > 0 &&
       /^[1-9][0-9]{5}$/.test(addrPin) &&
       aadhaarUploadComplete &&
-      panUploadComplete &&
-      aadhaarDocAddress.trim().length > 0 &&
-      panDocAddress.trim().length > 0
+      aadhaarDocAddress.trim().length > 0
     )
   }
 
@@ -1224,13 +1200,13 @@ export default function UnifiedKycPortal() {
                     <div className="space-y-2 text-left">
                       <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                         <Upload className="h-3.5 w-3.5 text-rose-700" />
-                        Upload Document Screenshots (Aadhaar &amp; PAN)
+                        Upload Aadhaar Card Screenshot
                       </label>
                       <p className="text-[10px] text-muted-foreground leading-normal pb-1">
-                        Upload screenshots. The system will scan them via OCR to verify if the document address matches your physical GPS location.
+                        Upload Aadhaar card screenshot. The system will scan it via Gemini OCR to verify if the document address aligns with your physical GPS location.
                       </p>
                       
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 gap-3">
                         {/* Aadhaar Card Scan */}
                         <div className="space-y-1">
                           <p className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
@@ -1293,67 +1269,7 @@ export default function UnifiedKycPortal() {
                           </div>
                         </div>
 
-                        {/* PAN Card Scan */}
-                        <div className="space-y-1">
-                          <p className="text-[10px] font-medium text-muted-foreground flex items-center gap-1">
-                            <FileText className="h-3 w-3 text-blue-500" /> PAN Card Scan
-                          </p>
-                          <div
-                            onDragOver={handleDragOver}
-                            onDrop={handlePanDrop}
-                            onClick={() => panInputRef.current?.click()}
-                            className={`border-2 border-dashed rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer transition bg-background/50 hover:bg-muted/30 ${
-                              panUploadComplete ? "border-emerald-500/50" : "border-border"
-                            }`}
-                          >
-                            <input
-                              type="file"
-                              ref={panInputRef}
-                              onChange={handlePanFileChange}
-                              accept=".pdf,.png,.jpg,.jpeg"
-                              className="hidden"
-                            />
-                            {!panFile ? (
-                              <>
-                                <Upload className="h-5 w-5 text-muted-foreground mb-1" />
-                                <p className="text-[10px] text-muted-foreground text-center">
-                                  Drag & drop or <span className="text-blue-500 font-semibold">browse</span>
-                                </p>
-                                <p className="text-[9px] text-muted-foreground mt-0.5">PDF / PNG / JPG (Max 5MB)</p>
-                              </>
-                            ) : (
-                              <div className="w-full flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex items-center gap-1.5">
-                                  <div className="p-1.5 rounded bg-blue-500/10 text-blue-500">
-                                    <File className="h-4 w-4" />
-                                  </div>
-                                  <div className="text-left">
-                                    <p className="text-[10px] font-semibold text-foreground truncate max-w-[120px]">{panFile.name}</p>
-                                    <p className="text-[9px] text-muted-foreground">{(panFile.size / 1024).toFixed(1)} KB</p>
-                                  </div>
-                                </div>
-                                {panUploading && (
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-[9px] font-mono text-muted-foreground">{panUploadProgress}%</span>
-                                    <div className="w-12 h-1 bg-muted rounded-full overflow-hidden">
-                                      <div className="h-full bg-blue-500" style={{ width: `${panUploadProgress}%` }} />
-                                    </div>
-                                  </div>
-                                )}
-                                {panUploadComplete && (
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-[9px] font-bold text-emerald-500 flex items-center gap-0.5">
-                                      <CheckCircle className="h-3 w-3" /> Ready
-                                    </span>
-                                    <button onClick={removePanFile} className="text-muted-foreground hover:text-rose-500 p-0.5">
-                                      <X className="h-3.5 w-3.5" />
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
+                        {/* PAN Card Scan (Removed as PAN is no longer required) */}
                       </div>
                     </div>
 
@@ -1396,51 +1312,13 @@ export default function UnifiedKycPortal() {
                               placeholder="Address extracted from Aadhaar Card Scan"
                             />
                           </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
-                              <FileText className="h-3 w-3 text-blue-500" />
-                              Extracted PAN Registry Address (Income Tax Database Match)
-                            </label>
-                            <Input
-                              type="text"
-                              required
-                              value={panDocAddress}
-                              onChange={(e) => handlePanDocAddrChange(e.target.value)}
-                              className="bg-background border-border text-foreground text-xs h-8.5 font-mono"
-                              placeholder="Address linked to PAN database"
-                            />
-                          </div>
-
                           {/* Address Matching Checklist */}
                           <div className="mt-3 p-3 bg-background/50 border border-border/80 rounded-lg space-y-2.5 text-xs">
                             <p className="font-semibold text-foreground pb-1 border-b border-border/40 text-[10px] uppercase tracking-wider text-amber-500">
-                              Verification Checklists
+                              Verification Checklist
                             </p>
                             
-                            {/* Check 1: Aadhaar vs PAN Parity */}
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className={`flex h-4 w-4 items-center justify-center rounded-full ${
-                                  checkAddressParity(aadhaarDocAddress, panDocAddress) 
-                                    ? "bg-emerald-500/10 text-emerald-500" 
-                                    : "bg-rose-500/10 text-rose-500"
-                                }`}>
-                                  {checkAddressParity(aadhaarDocAddress, panDocAddress) ? (
-                                    <CheckCircle className="h-3 w-3" />
-                                  ) : (
-                                    <X className="h-3 w-3" />
-                                  )}
-                                </span>
-                                <span className="text-muted-foreground text-[11px]">Document Address Parity (Aadhaar vs. PAN)</span>
-                              </div>
-                              <span className={`text-[10px] font-bold ${
-                                checkAddressParity(aadhaarDocAddress, panDocAddress) ? "text-emerald-500" : "text-rose-500"
-                              }`}>
-                                {checkAddressParity(aadhaarDocAddress, panDocAddress) ? "MATCHED" : "MISMATCHED"}
-                              </span>
-                            </div>
-
-                            {/* Check 2: GPS Geolocation Alignment */}
+                            {/* Check 1: GPS Geolocation Alignment */}
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <span className={`flex h-4 w-4 items-center justify-center rounded-full ${
@@ -1454,7 +1332,7 @@ export default function UnifiedKycPortal() {
                                     <X className="h-3 w-3" />
                                   )}
                                 </span>
-                                <span className="text-muted-foreground text-[11px]">Location Alignment (Documents vs. GPS City)</span>
+                                <span className="text-muted-foreground text-[11px]">Location Alignment (Aadhaar vs. GPS City)</span>
                               </div>
                               <span className={`text-[10px] font-bold ${
                                 checkGpsAlignment(aadhaarDocAddress, existingLocation) ? "text-emerald-500" : "text-rose-500"
@@ -1663,28 +1541,7 @@ export default function UnifiedKycPortal() {
                           <p className="text-[10px] text-muted-foreground">Must be linked to your identity records.</p>
                         </div>
 
-                        {/* PAN Number */}
-                        <div className="space-y-1.5 text-left">
-                          <label className="text-xs font-medium text-foreground flex items-center gap-1.5">
-                            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                            PAN Card Number
-                          </label>
-                          <Input
-                            type="text"
-                            required
-                            value={panInput}
-                            onChange={handlePanChange}
-                            placeholder="ABCDE1234F"
-                            className={`bg-background border-border text-foreground font-mono uppercase text-sm tracking-wider h-10 ${
-                              isPanValid ? "border-emerald-500/70 focus:border-emerald-500" : ""
-                            }`}
-                          />
-                          {panInput && !isPanValid && (
-                            <p className="text-[10px] text-rose-500 flex items-center gap-1 mt-1">
-                              <Info className="h-3 w-3" /> Format must be 5 letters, 4 digits, 1 letter (e.g. ABCDE1234F).
-                            </p>
-                          )}
-                        </div>
+                        {/* PAN Number (Removed as PAN is no longer required) */}
 
                         {/* Residential Address Details */}
                         <div className="space-y-3 text-left border-t border-border/40 pt-4">
