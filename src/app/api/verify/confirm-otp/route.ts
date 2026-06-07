@@ -65,29 +65,40 @@ export async function POST(request: Request) {
 
     // 2. Verify GPS Geolocation Alignment
     let gpsCity = '';
+    let candidates: string[] = [];
     try {
       const parsed = JSON.parse(record.existingLocation || '');
       gpsCity = parsed.city || '';
+      candidates = parsed.candidates || [gpsCity];
     } catch {
       gpsCity = record.existingLocation || '';
+      candidates = [gpsCity];
     }
-
-    const gpsCityLower = gpsCity.toLowerCase().trim();
     
     let gpsMatch = true;
     const isBypassed = record.aadhaarDocAddress && record.aadhaarDocAddress.toLowerCase().includes('bypassed');
 
-    if (!isBypassed && gpsCityLower && gpsCityLower !== 'unknown' && gpsCityLower !== '') {
+    if (!isBypassed && candidates.length > 0) {
       const docLower = (record.aadhaarDocAddress || '').toLowerCase();
       const customLower = (record.customAddress || '').toLowerCase();
       
-      const docGpsMatch = docLower.includes(gpsCityLower) ||
-                          (gpsCityLower === 'delhi' && docLower.includes('new delhi')) ||
-                          (gpsCityLower === 'new delhi' && docLower.includes('delhi'));
+      const docGpsMatch = candidates.some(cand => {
+        if (!cand) return false;
+        const candLower = cand.toLowerCase().trim();
+        if (candLower === 'unknown' || candLower === '') return false;
+        return docLower.includes(candLower) ||
+               (candLower === 'delhi' && docLower.includes('new delhi')) ||
+               (candLower === 'new delhi' && docLower.includes('delhi'));
+      });
                           
-      const customGpsMatch = customLower.includes(gpsCityLower) ||
-                            (gpsCityLower === 'delhi' && customLower.includes('new delhi')) ||
-                            (gpsCityLower === 'new delhi' && customLower.includes('delhi'));
+      const customGpsMatch = candidates.some(cand => {
+        if (!cand) return false;
+        const candLower = cand.toLowerCase().trim();
+        if (candLower === 'unknown' || candLower === '') return false;
+        return customLower.includes(candLower) ||
+               (candLower === 'delhi' && customLower.includes('new delhi')) ||
+               (candLower === 'new delhi' && customLower.includes('delhi'));
+      });
                             
       gpsMatch = docGpsMatch && customGpsMatch;
     }

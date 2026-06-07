@@ -57,23 +57,29 @@ export async function POST(request: Request) {
 
     // 2. Check GPS Geolocation Alignment
     let gpsCity = '';
+    let candidates: string[] = [];
     try {
       const parsed = JSON.parse(existingLocation || '');
       gpsCity = parsed.city || '';
+      candidates = parsed.candidates || [gpsCity];
     } catch {
       gpsCity = existingLocation || '';
+      candidates = [gpsCity];
     }
 
-    const gpsCityLower = gpsCity.toLowerCase().trim();
-    
     let gpsMatch = true;
     const isBypassed = aadhaarDocAddress && aadhaarDocAddress.toLowerCase().includes('bypassed');
 
-    if (!isBypassed && gpsCityLower && gpsCityLower !== 'unknown' && gpsCityLower !== '') {
+    if (!isBypassed && candidates.length > 0) {
       const docLower = (aadhaarDocAddress || '').toLowerCase();
-      gpsMatch = docLower.includes(gpsCityLower) ||
-                 (gpsCityLower === 'delhi' && docLower.includes('new delhi')) ||
-                 (gpsCityLower === 'new delhi' && docLower.includes('delhi'));
+      gpsMatch = candidates.some(cand => {
+        if (!cand) return false;
+        const candLower = cand.toLowerCase().trim();
+        if (candLower === 'unknown' || candLower === '') return false;
+        return docLower.includes(candLower) ||
+               (candLower === 'delhi' && docLower.includes('new delhi')) ||
+               (candLower === 'new delhi' && docLower.includes('delhi'));
+      });
     }
 
     if (!gpsMatch) {

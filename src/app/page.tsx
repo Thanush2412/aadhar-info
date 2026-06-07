@@ -380,6 +380,7 @@ export default function UnifiedKycPortal() {
         let state = ""
         let postcode = ""
         
+        const candidates: string[] = []
         for (const comp of comps) {
           const types = comp.types || []
           if (types.includes("premise") || types.includes("subpremise") || types.includes("street_number") || types.includes("house_number") || types.includes("building")) {
@@ -397,6 +398,13 @@ export default function UnifiedKycPortal() {
           } else if (types.includes("postal_code")) {
             postcode = comp.long_name
           }
+          
+          if (types.some((t: string) => ["locality", "sublocality", "administrative_area_level_2", "neighborhood", "route"].includes(t))) {
+            const val = comp.long_name.trim()
+            if (val && val.length > 2 && !candidates.includes(val)) {
+              candidates.push(val)
+            }
+          }
         }
         
         if (!city) {
@@ -406,6 +414,10 @@ export default function UnifiedKycPortal() {
           }
         }
 
+        if (city && !candidates.includes(city)) {
+          candidates.push(city)
+        }
+        
         const streetInfo = [road, sublocality, neighborhood].filter(Boolean).join(", ")
         
         if (fillFormFields) {
@@ -418,6 +430,7 @@ export default function UnifiedKycPortal() {
         
         const gpsDetails = {
           city: city || "Unknown",
+          candidates: candidates,
           state: state || "Unknown",
           postcode: postcode || "Unknown",
           displayName: result.formatted_address || "Unknown"
@@ -437,8 +450,10 @@ export default function UnifiedKycPortal() {
       const res = await fetch("https://ipwho.is/")
       const data = await res.json()
       if (data && data.success) {
+        const candidates = [data.city, data.region].filter(Boolean)
         const gpsDetails = {
           city: data.city || "Unknown",
+          candidates: candidates,
           state: data.region || "Unknown",
           postcode: data.postal || "Unknown",
           displayName: `${data.city || ""}, ${data.region || ""}, ${data.country || ""}`
@@ -726,23 +741,25 @@ export default function UnifiedKycPortal() {
   }, [])
 
   const checkGpsAlignment = (docAddr: string, locStr: string): boolean => {
-    let gpsCity = ""
-    if (locStr) {
-      try {
-        const parsed = JSON.parse(locStr)
-        gpsCity = parsed.city || gpsCity
-      } catch {
-        gpsCity = locStr
-      }
+    if (!locStr) return false
+    try {
+      const parsed = JSON.parse(locStr)
+      const candidates = parsed.candidates || [parsed.city]
+      const docLower = docAddr.toLowerCase()
+      
+      return candidates.some((cand: string) => {
+        if (!cand || cand.toLowerCase() === 'unknown') return false
+        const candLower = cand.toLowerCase().trim()
+        return docLower.includes(candLower) ||
+               (candLower === 'delhi' && docLower.includes('new delhi')) ||
+               (candLower === 'new delhi' && docLower.includes('delhi'))
+      })
+    } catch {
+      const gpsCityLower = locStr.toLowerCase().trim()
+      if (!gpsCityLower || gpsCityLower === 'unknown') return false
+      const docLower = docAddr.toLowerCase()
+      return docLower.includes(gpsCityLower)
     }
-    if (!gpsCity || gpsCity.toLowerCase() === 'unknown') return false
-    
-    const gpsCityLower = gpsCity.toLowerCase().trim()
-    const docLower = docAddr.toLowerCase()
-    
-    return docLower.includes(gpsCityLower) ||
-           (gpsCityLower === 'delhi' && docLower.includes('new delhi')) ||
-           (gpsCityLower === 'new delhi' && docLower.includes('delhi'))
   }
 
   // Real Gemini OCR Address scan once Aadhaar file is fully uploaded
