@@ -1297,6 +1297,11 @@ export default function UnifiedKycPortal() {
                                 : "Address extracted from Aadhaar Card does not match your location."
                               }
                             </p>
+                            {!isDocumentVerified && aadhaarDocAddress && (
+                              <p className="text-[9px] font-mono mt-2 p-2 bg-background/50 border border-rose-500/10 rounded text-rose-500/90 max-w-sm leading-normal break-words">
+                                <strong>Extracted Address:</strong> {aadhaarDocAddress}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wide ${
