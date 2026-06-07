@@ -21,7 +21,7 @@ export async function POST(request: Request) {
           {
             parts: [
               {
-                text: 'Extract the complete postal address from this Aadhaar card image. If there are multiple addresses or language translations, return the one that matches or is closest to the main address in English. Return ONLY the final extracted address as a single line, with no extra text, explanations, or labels.'
+                text: 'Extract the complete postal address from this Aadhaar card image. The address can be written in English, Tamil, or both. If the address is written in Tamil, you MUST translate the entire address (especially the city and state names) into English and output the English version. Ensure the English city name (e.g., Coimbatore, Chennai, Madurai, Salem, Tiruppur, etc.) is clearly visible in the returned address string. Return ONLY the final extracted address as a single line, with no extra text, explanations, or labels.'
               },
               {
                 inlineData: {

@@ -1278,68 +1278,34 @@ export default function UnifiedKycPortal() {
                     )}
 
                     {showOcrDetails && (
-                      <div className="p-3.5 bg-rose-955/10 border border-rose-900/20 rounded-lg space-y-3 text-left my-4">
-                        <div className="flex items-center justify-between border-b border-border/40 pb-2">
-                          <div className="flex items-center gap-1.5">
-                            <ShieldCheck className="h-4 w-4 text-emerald-500" />
-                            <p className="text-xs font-bold text-amber-500 uppercase tracking-wider">
-                              OCR Extracted Document Addresses
+                      <div className={`p-4 rounded-lg border text-left my-4 flex items-center justify-between transition-all duration-300 ${
+                        isDocumentVerified 
+                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-500" 
+                          : "bg-rose-500/10 border-rose-500/30 text-rose-500"
+                      }`}>
+                        <div className="flex items-center gap-2.5">
+                          {isDocumentVerified ? (
+                            <CheckCircle className="h-5 w-5 text-emerald-500 animate-bounce" />
+                          ) : (
+                            <ShieldAlert className="h-5 w-5 text-rose-500" />
+                          )}
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wider">Aadhaar Location Verification</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              {isDocumentVerified 
+                                ? "Address extracted from Aadhaar Card aligns with your location." 
+                                : "Address extracted from Aadhaar Card does not match your location."
+                              }
                             </p>
                           </div>
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                            isDocumentVerified ? "bg-emerald-500/10 text-emerald-500" : "bg-rose-500/10 text-rose-500"
-                          }`}>
-                            {isDocumentVerified ? "MATCHED" : "MISMATCHED"}
-                          </span>
                         </div>
-                        <div className="space-y-2.5">
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
-                              <Fingerprint className="h-3 w-3 text-rose-700 dark:text-rose-500" />
-                              Extracted Aadhaar Address (from backside scan)
-                            </label>
-                            <Input
-                              type="text"
-                              required
-                              value={aadhaarDocAddress}
-                              onChange={(e) => handleAadhaarDocAddrChange(e.target.value)}
-                              className="bg-background border-border text-foreground text-xs h-8.5 font-mono"
-                              placeholder="Address extracted from Aadhaar Card Scan"
-                            />
-                          </div>
-                          {/* Address Matching Checklist */}
-                          <div className="mt-3 p-3 bg-background/50 border border-border/80 rounded-lg space-y-2.5 text-xs">
-                            <p className="font-semibold text-foreground pb-1 border-b border-border/40 text-[10px] uppercase tracking-wider text-amber-500">
-                              Verification Checklist
-                            </p>
-                            
-                            {/* Check 1: GPS Geolocation Alignment */}
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className={`flex h-4 w-4 items-center justify-center rounded-full ${
-                                  checkGpsAlignment(aadhaarDocAddress, existingLocation) 
-                                    ? "bg-emerald-500/10 text-emerald-500" 
-                                    : "bg-rose-500/10 text-rose-500"
-                                }`}>
-                                  {checkGpsAlignment(aadhaarDocAddress, existingLocation) ? (
-                                    <CheckCircle className="h-3 w-3" />
-                                  ) : (
-                                    <X className="h-3 w-3" />
-                                  )}
-                                </span>
-                                <span className="text-muted-foreground text-[11px]">Location Alignment (Aadhaar vs. GPS City)</span>
-                              </div>
-                              <span className={`text-[10px] font-bold ${
-                                checkGpsAlignment(aadhaarDocAddress, existingLocation) ? "text-emerald-500" : "text-rose-500"
-                              }`}>
-                                {checkGpsAlignment(aadhaarDocAddress, existingLocation) ? "ALIGNED" : "MISALIGNED"}
-                              </span>
-                            </div>
-                          </div>
-
-                          <p className="text-[9px] text-muted-foreground italic leading-normal pt-1">
-                            * Note: You can modify these extracted addresses to test success/failure flows (e.g. change the city name in either address field to trigger location validation mismatch).
-                          </p>
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wide ${
+                          isDocumentVerified ? "bg-emerald-500/20 text-emerald-500" : "bg-rose-500/20 text-rose-500"
+                        }`}>
+                          {isDocumentVerified ? "MATCHED" : "MISMATCHED"}
+                        </span>
+                      </div>
+                    )}
 
                           {!isDocumentVerified && (
                             <div className="mt-4 p-3 bg-rose-500/5 border border-rose-500/10 rounded-lg space-y-3">
@@ -1402,13 +1368,10 @@ export default function UnifiedKycPortal() {
                                       })}
                                     </div>
                                   )}
-                                </div>
                               </div>
                             </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                          </div>
+                        )}
 
                     {isDocumentVerified ? (
                       <motion.div
