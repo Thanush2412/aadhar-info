@@ -1403,40 +1403,6 @@ export default function UnifiedKycPortal() {
                                     </div>
                                   )}
                                 </div>
-
-                                <div className="relative flex items-center my-1">
-                                  <div className="flex-grow border-t border-border/40" />
-                                  <span className="flex-shrink mx-3 text-[9px] text-muted-foreground font-semibold uppercase tracking-wider">
-                                    OR Bypass (For Testing)
-                                  </span>
-                                  <div className="flex-grow border-t border-border/40" />
-                                </div>
-
-                                <Button
-                                  type="button"
-                                  onClick={() => {
-                                    const mockGps = {
-                                      city: "Coimbatore",
-                                      state: "Tamil Nadu",
-                                      postcode: "641014",
-                                      displayName: "7/2A, Goldwins, Athikuttai, Karuparampalayam Pirvu, Coimbatore, Tamil Nadu - 641014"
-                                    }
-                                    setExistingLocation(JSON.stringify(mockGps))
-                                    setAddrFlatNo("7/2A, Goldwins")
-                                    setAddrStreet("Athikuttai, Karuparampalayam Pirvu")
-                                    setAddrCity("Coimbatore")
-                                    setAddrState("Tamil Nadu")
-                                    setAddrPin("641014")
-                                    setIsDocumentVerified(true)
-                                    toast.success("GPS Location Verification Bypassed!", {
-                                      description: "Document verification unlocked successfully."
-                                    })
-                                  }}
-                                  className="w-full text-xs h-9 bg-amber-600 hover:bg-amber-700 text-white font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
-                                >
-                                  <ShieldCheck className="h-4 w-4" />
-                                  Manual Override GPS Check (Bypass Lock)
-                                </Button>
                               </div>
                             </div>
                           )}
