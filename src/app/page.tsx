@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { isValidAadhaar, generateMockAadhaar } from "@/lib/verhoeff"
 import { ThemeToggle } from "@/components/theme-toggle"
+import LocationDetector from "@/components/LocationDetector"
 
 interface AadhaarDemographics {
   name: string;
@@ -119,6 +120,7 @@ export default function UnifiedKycPortal() {
   const [ocrRequested, setOcrRequested] = useState(false)
   const [locationDetectingBg, setLocationDetectingBg] = useState(true)
   const [locationError, setLocationError] = useState("")
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
 
   // AI Address Matching States
   const [isAddressMatching, setIsAddressMatching] = useState(false)
@@ -363,199 +365,7 @@ export default function UnifiedKycPortal() {
     }
   }
 
-  const performGeocoding = async (lat: number, lng: number, fillFormFields: boolean) => {
-    try {
-      const res = await fetch(`/api/verify/reverse-geocode?lat=${lat}&lng=${lng}`)
-      const geoData = await res.json()
-      const results = geoData.results || geoData.geocodingResults
-      if (geoData && (geoData.status === "ok" || geoData.status === "success") && results && results.length > 0) {
-        const result = results[0]
-        const comps = result.address_components || []
-        
-        let houseNumber = ""
-        let road = ""
-        let sublocality = ""
-        let neighborhood = ""
-        let city = ""
-        let state = ""
-        let postcode = ""
-        
-        // Collect ALL component names as candidates (cast wide net across all locality levels)
-        const candidateSet = new Set<string>()
-
-        for (const comp of comps) {
-          const types: string[] = comp.types || []
-          const name: string = (comp.long_name || "").trim()
-
-          // Structured field extraction
-          if (types.some(t => ["premise","subpremise","street_number","house_number","building"].includes(t))) {
-            houseNumber = name
-          } else if (types.includes("route")) {
-            road = name
-          } else if (types.some(t => t.startsWith("sublocality"))) {
-            // catches sublocality, sublocality_level_1, sublocality_level_2, etc.
-            if (!sublocality) sublocality = name
-          } else if (types.includes("neighborhood")) {
-            neighborhood = name
-          } else if (types.includes("locality")) {
-            city = name
-          } else if (types.includes("administrative_area_level_1")) {
-            state = name
-          } else if (types.includes("postal_code")) {
-            postcode = name
-          }
-
-          // Add every meaningful component as a candidate (excludes country, postal_code, route, building)
-          const skipTypes = ["country", "postal_code", "premise", "subpremise", "street_number", "house_number", "building", "route"]
-          if (!types.some(t => skipTypes.includes(t)) && name && name.length > 2) {
-            candidateSet.add(name)
-          }
-        }
-
-        // Fallback city from district level
-        if (!city) {
-          const districtComp = comps.find((c: any) =>
-            c.types.includes("administrative_area_level_2") || c.types.includes("administrative_area_level_3")
-          )
-          if (districtComp) city = districtComp.long_name
-        }
-
-        // Always add the resolved city
-        if (city && city !== "Unknown") candidateSet.add(city)
-
-        // Also parse the formatted_address — split on comma, trim each segment
-        // This catches names like "Coimbatore" that might appear in the full address string
-        // even if the component typing was different
-        const formattedAddr: string = result.formatted_address || ""
-        if (formattedAddr) {
-          formattedAddr.split(",").forEach((seg: string) => {
-            const s = seg.trim()
-            // Skip numeric-only segments (postcodes) and very short segments
-            if (s && s.length > 2 && s.length < 60 && !/^\d+$/.test(s)) {
-              candidateSet.add(s)
-            }
-          })
-        }
-
-        const candidates = Array.from(candidateSet)
-        const streetInfo = [road, sublocality, neighborhood].filter(Boolean).join(", ")
-        
-        const shouldFill = fillFormFields || (!addrCity && !addrState && !addrPin)
-        if (shouldFill) {
-          setAddrFlatNo(houseNumber)
-          setAddrStreet(streetInfo)
-          setAddrCity(city)
-          setAddrPin(postcode)
-          setAddrState(state)
-        }
-        
-        const gpsDetails = {
-          city: city || "Unknown",
-          candidates,
-          state: state || "Unknown",
-          postcode: postcode || "Unknown",
-          displayName: formattedAddr || "Unknown"
-        }
-        setExistingLocation(JSON.stringify(gpsDetails))
-        setLocationError("")
-        return gpsDetails
-      }
-    } catch (error) {
-      console.error("Geocoding resolution error:", error)
-    }
-    return null
-  }
-
-  const performIpGeocoding = async (fillFormFields: boolean) => {
-    try {
-      const res = await fetch("https://ipwho.is/")
-      const data = await res.json()
-      if (data && data.success) {
-        const candidates = [data.city, data.region].filter(Boolean)
-        const gpsDetails = {
-          city: data.city || "Unknown",
-          candidates: candidates,
-          state: data.region || "Unknown",
-          postcode: data.postal || "Unknown",
-          displayName: `${data.city || ""}, ${data.region || ""}, ${data.country || ""}`
-        }
-        const shouldFill = fillFormFields || (!addrCity && !addrState && !addrPin)
-        if (shouldFill) {
-          setAddrCity(data.city || "")
-          setAddrState(data.region || "")
-          setAddrPin(data.postal || "")
-        }
-        setExistingLocation(JSON.stringify(gpsDetails))
-        setLocationError("")
-        return gpsDetails
-      } else {
-        setLocationError(data.message || "IP lookup returned success: false")
-      }
-    } catch (error: any) {
-      console.error("IP geocoding resolution error:", error)
-      setLocationError(`IP fallback failed: ${error.message || error}`)
-    }
-    return null
-  }
-
-  // Single unified location detector — identical logic to background GPS watcher
-  // fillFormFields=true: auto-fills address inputs (Re-verify button)
-  // fillFormFields=false: only updates existingLocation state (background watcher)
-  const triggerLocationDetect = async (fillFormFields: boolean): Promise<any> => {
-    setDetectingLoc(true)
-    setLocationError("")
-
-    const runIpFallback = async () => {
-      const details = await performIpGeocoding(fillFormFields)
-      if (details) {
-        if (fillFormFields) toast.success("Location resolved via IP!", {
-          description: `${details.city}, ${details.state}`
-        })
-      } else {
-        toast.error("Location detection failed", {
-          description: "Check internet connection or enter city manually."
-        })
-      }
-      setDetectingLoc(false)
-      return details
-    }
-
-    const isInsecureNetwork = typeof window !== "undefined" && !window.isSecureContext && window.location.hostname !== "localhost"
-
-    if (isInsecureNetwork) {
-      return runIpFallback()
-    } else if (navigator.geolocation) {
-      return new Promise((resolve) => {
-        // Exact same options as background GPS watcher
-        navigator.geolocation.getCurrentPosition(
-          async (position) => {
-            const details = await performGeocoding(position.coords.latitude, position.coords.longitude, fillFormFields)
-            if (!details) {
-              const fb = await runIpFallback()
-              resolve(fb)
-            } else {
-              if (fillFormFields) toast.success("Coordinates resolved!", {
-                description: `${details.city}, ${details.state}`
-              })
-              setDetectingLoc(false)
-              resolve(details)
-            }
-          },
-          async (error) => {
-            console.warn("GPS failed, falling back to IP:", error.message)
-            const fb = await runIpFallback()
-            resolve(fb)
-          },
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-        )
-      })
-    } else {
-      return runIpFallback()
-    }
-  }
-
-  // Keep autoDetectLocation as alias so existing callers still work
-  const autoDetectLocation = () => triggerLocationDetect(true)
+  // Geocoding and geolocation helpers have been extracted to LocationDetector component
 
   // Send e-KYC Data to Backend API
   // Send e-KYC Data to Backend API
@@ -656,19 +466,14 @@ export default function UnifiedKycPortal() {
 
     let loc = existingLocation
     if (!loc) {
-      const details = await triggerLocationDetect(false)
-      if (details) {
-        loc = JSON.stringify(details)
-      }
-    }
-
-    if (loc) {
-      submitVerificationData(cleanAadhaar, loc)
-    } else {
-      toast.error("Location verification is required to proceed.")
+      setRefreshTrigger(prev => prev + 1)
+      toast.error("Detecting physical coordinates. Please wait a moment and try again.")
       setLoading(false)
       setLocationLoading(false)
+      return
     }
+
+    submitVerificationData(cleanAadhaar, loc)
   }
 
   // OTP Timer countdown
@@ -680,47 +485,7 @@ export default function UnifiedKycPortal() {
     return () => clearInterval(interval)
   }, [showOtpModal, timer])
 
-  // Background Geolocation on page load (Real-time GPS Watcher)
-  useEffect(() => {
-    let watchId: number | null = null;
-    const isInsecureNetwork = typeof window !== "undefined" && !window.isSecureContext && window.location.hostname !== "localhost";
-
-    const runBackgroundIpFallback = async (gpsErrorMsg?: string) => {
-      const details = await performIpGeocoding(false)
-      if (!details && gpsErrorMsg) {
-        setLocationError(`GPS block: ${gpsErrorMsg}. IP fallback failed.`)
-      }
-      setLocationDetectingBg(false)
-    }
-
-    if (navigator.geolocation && !isInsecureNetwork) {
-      watchId = navigator.geolocation.watchPosition(
-        async (position) => {
-          console.log("Real-time GPS update:", position.coords.latitude, position.coords.longitude, "accuracy:", position.coords.accuracy)
-          const details = await performGeocoding(position.coords.latitude, position.coords.longitude, false)
-          if (!details) {
-            await runBackgroundIpFallback("Reverse-geocode parse failure")
-          } else {
-            setLocationDetectingBg(false)
-            setLocationError("")
-          }
-        },
-        async (error) => {
-          console.warn("Real-time GPS watcher failed, trying IP Geolocation fallback:", error.message || error)
-          await runBackgroundIpFallback(error.message)
-        },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-      )
-    } else {
-      runBackgroundIpFallback(isInsecureNetwork ? "HTTP origin blocked GPS" : "Geolocation API unsupported")
-    }
-
-    return () => {
-      if (watchId !== null && navigator.geolocation) {
-        navigator.geolocation.clearWatch(watchId)
-      }
-    }
-  }, [])
+  // Background GPS Watcher has been moved to LocationDetector component
 
   const checkGpsAlignment = (docAddr: string, locStr: string): boolean => {
     if (!locStr) return false
@@ -963,7 +728,7 @@ export default function UnifiedKycPortal() {
     setStep(1)
     setVerificationError(null)
     setExistingLocation("")
-    triggerLocationDetect(true)
+    setRefreshTrigger(prev => prev + 1)
   }
 
   const isFormValid = () => {
@@ -1045,31 +810,26 @@ export default function UnifiedKycPortal() {
                 <form onSubmit={handleRequestVerification}>
                   <CardContent className="space-y-4">
                     
-                    {/* Background GPS Location Status */}
-                    <div className="p-3 bg-muted/40 border border-border rounded-lg flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4 text-[#8C002B] animate-pulse" />
-                        <div>
-                          <p className="font-semibold text-foreground">Current GPS Location</p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {(locationDetectingBg || detectingLoc) 
-                              ? "Resolving coordinates..." 
-                              : existingLocation 
-                                ? getDisplayLocation(existingLocation) 
-                                : locationError || "Location failed"}
-                          </p>
-                        </div>
-                      </div>
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                        (locationDetectingBg || detectingLoc) 
-                          ? "bg-amber-500/10 text-amber-500 animate-pulse" 
-                          : existingLocation 
-                            ? "bg-emerald-500/10 text-emerald-500" 
-                            : "bg-rose-500/10 text-rose-500"
-                      }`}>
-                        {(locationDetectingBg || detectingLoc) ? "RESOLVING" : existingLocation ? "RESOLVED" : "FAILED"}
-                      </span>
-                    </div>
+                    {/* Background GPS Location Status (Extracted Component) */}
+                    <LocationDetector
+                      existingLocation={existingLocation}
+                      setExistingLocation={setExistingLocation}
+                      locationError={locationError}
+                      setLocationError={setLocationError}
+                      detectingLoc={detectingLoc}
+                      setDetectingLoc={setDetectingLoc}
+                      locationDetectingBg={locationDetectingBg}
+                      setLocationDetectingBg={setLocationDetectingBg}
+                      addrCity={addrCity}
+                      addrState={addrState}
+                      addrPin={addrPin}
+                      setAddrFlatNo={setAddrFlatNo}
+                      setAddrStreet={setAddrStreet}
+                      setAddrCity={setAddrCity}
+                      setAddrPin={setAddrPin}
+                      setAddrState={setAddrState}
+                      refreshTrigger={refreshTrigger}
+                    />
 
                     {/* Document Scans (Uploaded First) */}
                     <div className="space-y-2 text-left">
@@ -1350,7 +1110,7 @@ export default function UnifiedKycPortal() {
                               type="button" 
                               variant="outline" 
                               size="sm" 
-                              onClick={() => triggerLocationDetect(true)}
+                              onClick={() => setRefreshTrigger(prev => prev + 1)}
                               disabled={detectingLoc}
                               className="text-[10px] h-7 border-rose-800/30 text-rose-500 hover:bg-rose-500/10 flex items-center gap-1 cursor-pointer"
                             >
