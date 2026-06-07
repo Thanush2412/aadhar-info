@@ -1307,71 +1307,7 @@ export default function UnifiedKycPortal() {
                       </div>
                     )}
 
-                          {!isDocumentVerified && (
-                            <div className="mt-4 p-3 bg-rose-500/5 border border-rose-500/10 rounded-lg space-y-3">
-                              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                <strong>⚠️ GPS Location Not Aligned:</strong> The document address cannot be auto-verified because your GPS location is missing or did not match the document city. Please verify your current location to unlock the form.
-                              </p>
-                              <div className="flex flex-col gap-2">
-                                <Button
-                                  type="button"
-                                  onClick={autoDetectLocation}
-                                  disabled={detectingLoc}
-                                  className="w-full text-xs h-9 bg-rose-700 hover:bg-rose-800 text-white font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
-                                >
-                                  {detectingLoc ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <MapPin className="h-3.5 w-3.5" />}
-                                  {detectingLoc ? "Requesting GPS..." : "Grant GPS Permission & Detect Location"}
-                                </Button>
-                                <div className="relative flex items-center">
-                                  <div className="flex-grow border-t border-border/40" />
-                                  <span className="flex-shrink mx-3 text-[9px] text-muted-foreground font-semibold uppercase tracking-wider">
-                                    OR Select City Manually (Fallback)
-                                  </span>
-                                  <div className="flex-grow border-t border-border/40" />
-                                </div>
-                                <div className="relative">
-                                  <Input
-                                    type="text"
-                                    value={addrCity}
-                                    onChange={(e) => handleCityInputChange(e.target.value)}
-                                    onFocus={() => citySuggestions.length > 0 && setShowCitySuggestions(true)}
-                                    onBlur={() => setTimeout(() => setShowCitySuggestions(false), 180)}
-                                    placeholder="Type and select city (e.g. Coimbatore)"
-                                    className="bg-background border-border text-foreground text-xs h-9 pr-8"
-                                    autoComplete="off"
-                                  />
-                                  {cityLoading ? (
-                                    <RefreshCw className="absolute right-2.5 top-2.5 h-4 w-4 animate-spin text-muted-foreground" />
-                                  ) : addrCity ? (
-                                    <button type="button" onClick={() => { setAddrCity(""); setCitySuggestions([]) }} className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground">
-                                      <X className="h-4 w-4" />
-                                    </button>
-                                  ) : (
-                                    <MapPin className="absolute right-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                                  )}
 
-                                  {showCitySuggestions && citySuggestions.length > 0 && (
-                                    <div className="absolute bottom-full mb-1 left-0 right-0 z-50 bg-card border border-border rounded-lg shadow-2xl overflow-hidden max-h-48 overflow-y-auto">
-                                      {citySuggestions.map((item: any, idx) => {
-                                        const mainText = item.structured_formatting?.main_text || item.description
-                                        return (
-                                          <button
-                                            key={idx}
-                                            type="button"
-                                            onMouseDown={() => selectCitySuggestion(item)}
-                                            className="w-full text-left px-3 py-2 hover:bg-muted/60 border-b border-border/50 last:border-0 transition text-xs flex items-center gap-1.5"
-                                          >
-                                            <MapPin className="h-3.5 w-3.5 text-amber-500 flex-shrink-0" />
-                                            <span>{mainText}</span>
-                                          </button>
-                                        )
-                                      })}
-                                    </div>
-                                  )}
-                              </div>
-                            </div>
-                          </div>
-                        )}
 
                     {isDocumentVerified ? (
                       <motion.div
