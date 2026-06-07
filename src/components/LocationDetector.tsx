@@ -26,6 +26,7 @@ interface LocationDetectorProps {
 
   // Manual refresh triggers
   refreshTrigger: number
+  isAddressEdited: boolean
 }
 
 export default function LocationDetector({
@@ -45,7 +46,8 @@ export default function LocationDetector({
   setAddrCity,
   setAddrPin,
   setAddrState,
-  refreshTrigger
+  refreshTrigger,
+  isAddressEdited
 }: LocationDetectorProps) {
   
   const isInitialMount = useRef(true)
@@ -79,7 +81,7 @@ export default function LocationDetector({
 
           if (types.some(t => ["premise","subpremise","street_number","house_number","building"].includes(t))) {
             houseNumber = name
-          } else if (types.includes("route")) {
+          } else if (types.includes("route") || types.includes("street_address")) {
             road = name
           } else if (types.some(t => t.startsWith("sublocality"))) {
             sublocalities.push(name)
@@ -97,7 +99,7 @@ export default function LocationDetector({
             postcode = name
           }
 
-          const skipTypes = ["country", "postal_code", "premise", "subpremise", "street_number", "house_number", "building", "route"]
+          const skipTypes = ["country", "postal_code", "premise", "subpremise", "street_number", "house_number", "building", "route", "street_address"]
           if (!types.some(t => skipTypes.includes(t)) && name && name.length > 2) {
             candidateSet.add(name)
           }
@@ -128,7 +130,7 @@ export default function LocationDetector({
         const candidates = Array.from(candidateSet)
         const streetInfo = [road, sublocalities.join(", "), neighborhood].filter(Boolean).join(", ")
         
-        const shouldFill = fillFormFields || (!addrCity && !addrState && !addrPin)
+        const shouldFill = fillFormFields || !isAddressEdited
         if (shouldFill) {
           setAddrFlatNo(houseNumber)
           setAddrStreet(streetInfo)

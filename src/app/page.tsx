@@ -70,6 +70,7 @@ export default function UnifiedKycPortal() {
   const [addrState, setAddrState] = useState("")
   const [addrPin, setAddrPin] = useState("")
   const [existingLocation, setExistingLocation] = useState("") // Stores background resolved location city
+  const [isAddressEdited, setIsAddressEdited] = useState(false)
 
   // Computed full address for API submission
   const typedAddress = [addrFlatNo, addrStreet, addrCity, addrState, addrPin].filter(Boolean).join(", ")
@@ -295,9 +296,11 @@ export default function UnifiedKycPortal() {
         let state = ""
         let postcode = ""
         
+        const candidateSet = new Set<string>()
+
         for (const comp of comps) {
           const types = comp.types || []
-          const name = comp.long_name || ""
+          const name = (comp.long_name || "").trim()
           if (types.includes("locality")) {
             locality = name
           } else if (types.includes("administrative_area_level_2")) {
@@ -309,6 +312,11 @@ export default function UnifiedKycPortal() {
           } else if (types.includes("postal_code")) {
             postcode = name
           }
+
+          const skipTypes = ["country", "postal_code", "premise", "subpremise", "street_number", "house_number", "building", "route", "street_address"]
+          if (!types.some((t: string) => skipTypes.includes(t)) && name && name.length > 2) {
+            candidateSet.add(name)
+          }
         }
         
         let city = locality || district || subdistrict || ""
@@ -319,22 +327,42 @@ export default function UnifiedKycPortal() {
         if (!city) {
           city = item.structured_formatting?.main_text || item.description.split(",")[0].trim()
         }
+        if (city && city !== "Unknown") {
+          candidateSet.add(city)
+        }
+
         if (!state) {
           const parts = item.description.split(",")
           if (parts.length > 2) {
             state = parts[parts.length - 2].trim()
           }
         }
+        if (state && state !== "Unknown") {
+          candidateSet.add(state)
+        }
+
+        const formattedAddr: string = result.formatted_address || item.description || ""
+        if (formattedAddr) {
+          formattedAddr.split(",").forEach((seg: string) => {
+            const s = seg.trim()
+            if (s && s.length > 2 && s.length < 60 && !/^\d+$/.test(s)) {
+              candidateSet.add(s)
+            }
+          })
+        }
         
+        const candidates = Array.from(candidateSet)
+
         setAddrCity(city)
         if (state) setAddrState(state)
         if (postcode) setAddrPin(postcode)
         
         const gpsDetails = {
           city: city || "Unknown",
+          candidates,
           state: state || "Unknown",
           postcode: postcode || "Unknown",
-          displayName: result.formatted_address || item.description
+          displayName: formattedAddr || item.description
         }
         setExistingLocation(JSON.stringify(gpsDetails))
       }
@@ -348,9 +376,22 @@ export default function UnifiedKycPortal() {
       }
       setAddrCity(city)
       if (state) setAddrState(state)
+
+      const candidateSet = new Set<string>()
+      if (city) candidateSet.add(city)
+      if (state) candidateSet.add(state)
+      parts.forEach((p: string) => {
+        const s = p.trim()
+        if (s && s.length > 2 && s.length < 60 && !/^\d+$/.test(s)) {
+          candidateSet.add(s)
+        }
+      })
+      const candidates = Array.from(candidateSet)
+
       const gpsDetails = {
         city,
-        state,
+        candidates,
+        state: state || "Unknown",
         postcode: "Unknown",
         displayName: item.description
       }
@@ -716,6 +757,7 @@ export default function UnifiedKycPortal() {
     setPhoneInput("")
     setAddrFlatNo(""); setAddrStreet(""); setAddrCity(""); setAddrState(""); setAddrPin("")
     setExistingLocation("")
+    setIsAddressEdited(false)
     setAadhaarFile(null); setAadhaarUploadComplete(false); setAadhaarUploadProgress(0)
     setDemographics(null)
     setVerificationError(null)
@@ -812,7 +854,7 @@ export default function UnifiedKycPortal() {
                   </div>
                 </CardHeader>
                 
-                <form onSubmit={handleRequestVerification}>
+                <form onSubmit={handleRequestVerification} autoComplete="off">
                   <CardContent className="space-y-4">
                     
                     {/* Background GPS Location Status (Extracted Component) */}
@@ -834,6 +876,7 @@ export default function UnifiedKycPortal() {
                       setAddrPin={setAddrPin}
                       setAddrState={setAddrState}
                       refreshTrigger={refreshTrigger}
+                      isAddressEdited={isAddressEdited}
                     />
 
                     {/* Document Scans (Uploaded First) */}
@@ -1131,9 +1174,10 @@ export default function UnifiedKycPortal() {
                               type="text"
                               required
                               value={addrFlatNo}
-                              onChange={(e) => setAddrFlatNo(e.target.value)}
+                              onChange={(e) => { setAddrFlatNo(e.target.value); setIsAddressEdited(true); }}
                               placeholder="e.g. Flat 4B, Palm Grove Apartments"
                               className="bg-background border-border text-foreground text-sm h-10"
+                              autoComplete="new-password"
                             />
                           </div>
 
@@ -1143,9 +1187,10 @@ export default function UnifiedKycPortal() {
                               type="text"
                               required
                               value={addrStreet}
-                              onChange={(e) => setAddrStreet(e.target.value)}
+                              onChange={(e) => { setAddrStreet(e.target.value); setIsAddressEdited(true); }}
                               placeholder="e.g. 12, MG Road, Salt Lake Sector V"
                               className="bg-background border-border text-foreground text-sm h-10"
+                              autoComplete="new-password"
                             />
                           </div>
 
@@ -1157,17 +1202,17 @@ export default function UnifiedKycPortal() {
                                   type="text"
                                   required
                                   value={addrCity}
-                                  onChange={(e) => handleCityInputChange(e.target.value)}
+                                  onChange={(e) => { handleCityInputChange(e.target.value); setIsAddressEdited(true); }}
                                   onFocus={() => citySuggestions.length > 0 && setShowCitySuggestions(true)}
                                   onBlur={() => setTimeout(() => setShowCitySuggestions(false), 180)}
                                   placeholder="e.g. Kolkata"
                                   className="bg-background border-border text-foreground text-sm h-10 pr-8"
-                                  autoComplete="off"
+                                  autoComplete="new-password"
                                 />
                                 {cityLoading ? (
                                   <RefreshCw className="absolute right-2.5 top-3 h-3.5 w-3.5 animate-spin text-muted-foreground" />
                                 ) : addrCity ? (
-                                  <button type="button" onClick={() => { setAddrCity(""); setCitySuggestions([]) }} className="absolute right-2.5 top-3 text-muted-foreground hover:text-foreground">
+                                  <button type="button" onClick={() => { setAddrCity(""); setCitySuggestions([]); setIsAddressEdited(true); }} className="absolute right-2.5 top-3 text-muted-foreground hover:text-foreground">
                                     <X className="h-3.5 w-3.5" />
                                   </button>
                                 ) : (
@@ -1207,7 +1252,7 @@ export default function UnifiedKycPortal() {
                                 type="text"
                                 required
                                 value={addrPin}
-                                onChange={(e) => setAddrPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                                onChange={(e) => { setAddrPin(e.target.value.replace(/\D/g, "").slice(0, 6)); setIsAddressEdited(true); }}
                                 placeholder="e.g. 700091"
                                 maxLength={6}
                                 className={`bg-background border-border text-foreground text-sm h-10 font-mono tracking-widest ${
@@ -1217,6 +1262,7 @@ export default function UnifiedKycPortal() {
                                       ? "border-rose-400/70"
                                       : ""
                                 }`}
+                                autoComplete="new-password"
                               />
                             </div>
                           </div>
@@ -1227,9 +1273,10 @@ export default function UnifiedKycPortal() {
                               type="text"
                               required
                               value={addrState}
-                              onChange={(e) => setAddrState(e.target.value)}
+                              onChange={(e) => { setAddrState(e.target.value); setIsAddressEdited(true); }}
                               placeholder="e.g. Tamil Nadu"
                               className="bg-background border-border text-foreground text-sm h-10"
+                              autoComplete="new-password"
                             />
                           </div>
 
