@@ -1324,6 +1324,7 @@ export default function UnifiedKycPortal() {
                                 <Button
                                   type="button"
                                   onClick={() => {
+                                    setAadhaarDocAddress("Bypassed - Test Mode")
                                     setIsDocumentVerified(true)
                                     toast.success("GPS Location Match Bypassed for Testing!")
                                   }}

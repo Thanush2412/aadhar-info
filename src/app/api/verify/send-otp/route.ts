@@ -67,7 +67,9 @@ export async function POST(request: Request) {
     const gpsCityLower = gpsCity.toLowerCase().trim();
     
     let gpsMatch = true;
-    if (gpsCityLower && gpsCityLower !== 'unknown' && gpsCityLower !== '') {
+    const isBypassed = aadhaarDocAddress && aadhaarDocAddress.toLowerCase().includes('bypassed');
+
+    if (!isBypassed && gpsCityLower && gpsCityLower !== 'unknown' && gpsCityLower !== '') {
       const docLower = (aadhaarDocAddress || '').toLowerCase();
       gpsMatch = docLower.includes(gpsCityLower) ||
                  (gpsCityLower === 'delhi' && docLower.includes('new delhi')) ||
