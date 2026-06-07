@@ -81,3 +81,14 @@ function doOptions(e) {
   return ContentService.createTextOutput("")
     .setMimeType(ContentService.MimeType.TEXT);
 }
+
+// IMPORTANT: Run this function once in the Apps Script editor to authorize Drive and Sheets access!
+function runOnceToAuthorize() {
+  Logger.log("Authorizing DriveApp...");
+  var folder = DriveApp.getFolderById("1PxTneiPK85c6LnXSr7KJO13tGV1kMUEr");
+  Logger.log("Folder access: " + folder.getName());
+  
+  Logger.log("Authorizing SpreadsheetApp...");
+  var sheet = SpreadsheetApp.openById("1VlsoMoLqyNm5INvhO0BN5wl4VjQyewTmFbLVOSr8ZQM");
+  Logger.log("Spreadsheet access: " + sheet.getName());
+}
