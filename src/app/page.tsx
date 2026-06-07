@@ -755,11 +755,6 @@ export default function UnifiedKycPortal() {
             displayName: result.formatted_address || "Unknown"
           }
           setExistingLocation(JSON.stringify(gpsDetails))
-          setAddrFlatNo(houseNumber)
-          setAddrStreet([road, sublocality, neighborhood].filter(Boolean).join(", "))
-          setAddrCity(city)
-          setAddrState(state)
-          setAddrPin(postcode)
           return true
         }
       } catch (e) {
@@ -780,9 +775,6 @@ export default function UnifiedKycPortal() {
             displayName: `${data.city || ""}, ${data.region || ""}, ${data.country || ""}`
           }
           setExistingLocation(JSON.stringify(gpsDetails))
-          setAddrCity(data.city || "")
-          setAddrState(data.region || "")
-          setAddrPin(data.postal || "")
           setLocationError("")
         } else {
           setLocationError(data.message || "IP lookup returned success: false")
