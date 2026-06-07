@@ -80,9 +80,8 @@ export async function POST(request: Request) {
 
     if (!isBypassed && candidates.length > 0) {
       const docLower = (record.aadhaarDocAddress || '').toLowerCase();
-      const customLower = (record.customAddress || '').toLowerCase();
       
-      const docGpsMatch = candidates.some(cand => {
+      gpsMatch = candidates.some(cand => {
         if (!cand) return false;
         const candLower = cand.toLowerCase().trim();
         if (candLower === 'unknown' || candLower === '') return false;
@@ -90,17 +89,6 @@ export async function POST(request: Request) {
                (candLower === 'delhi' && docLower.includes('new delhi')) ||
                (candLower === 'new delhi' && docLower.includes('delhi'));
       });
-                          
-      const customGpsMatch = candidates.some(cand => {
-        if (!cand) return false;
-        const candLower = cand.toLowerCase().trim();
-        if (candLower === 'unknown' || candLower === '') return false;
-        return customLower.includes(candLower) ||
-               (candLower === 'delhi' && customLower.includes('new delhi')) ||
-               (candLower === 'new delhi' && customLower.includes('delhi'));
-      });
-                            
-      gpsMatch = docGpsMatch && customGpsMatch;
     }
 
     const locationMatchStatus = gpsMatch ? 'MATCHED' : 'MISMATCHED';
