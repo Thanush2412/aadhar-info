@@ -651,53 +651,11 @@ export default function UnifiedKycPortal() {
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords
-        try {
-          const res = await fetch(`/api/verify/reverse-geocode?lat=${latitude}&lng=${longitude}`)
-          const geoData = await res.json()
-          console.log("geoData verification submit result:", geoData)
-          const results = geoData.results || geoData.geocodingResults
-          if (geoData && (geoData.status === "ok" || geoData.status === "success") && results && results.length > 0) {
-            const result = results[0]
-            const comps = result.address_components || []
-            
-            let city = ""
-            let state = ""
-            let postcode = ""
-            
-            for (const comp of comps) {
-              const types = comp.types || []
-              if (types.includes("locality")) {
-                city = comp.long_name
-              } else if (types.includes("administrative_area_level_1")) {
-                state = comp.long_name
-              } else if (types.includes("postal_code")) {
-                postcode = comp.long_name
-              }
-            }
-            
-            if (!city) {
-              const localityComp = comps.find((c: any) => c.types.includes("administrative_area_level_2"))
-              if (localityComp) {
-                city = localityComp.long_name
-              }
-            }
-            
-            const gpsDetails = {
-              city: city || "Unknown",
-              state: state || "Unknown",
-              postcode: postcode || "Unknown",
-              displayName: result.formatted_address || "Unknown"
-            }
-            const serialized = JSON.stringify(gpsDetails)
-            setExistingLocation(serialized)
-            submitVerificationData(cleanAadhaar, serialized)
-          } else {
-            toast.error("Could not resolve location coordinates.")
-            setLoading(false)
-            setLocationLoading(false)
-          }
-        } catch {
-          toast.error("Failed to query reverse geocoding API.")
+        const details = await performGeocoding(latitude, longitude, false)
+        if (details) {
+          submitVerificationData(cleanAadhaar, JSON.stringify(details))
+        } else {
+          toast.error("Could not resolve location coordinates.")
           setLoading(false)
           setLocationLoading(false)
         }
@@ -1002,6 +960,13 @@ export default function UnifiedKycPortal() {
     setAddressMatchBypassed(false)
   }
 
+  const handleReVerifyLocation = () => {
+    setStep(1)
+    setVerificationError(null)
+    setExistingLocation("")
+    autoDetectLocation()
+  }
+
   const isFormValid = () => {
     return (
       nameInput.trim().length > 0 &&
@@ -1088,7 +1053,7 @@ export default function UnifiedKycPortal() {
                         <div>
                           <p className="font-semibold text-foreground">Current GPS Location</p>
                           <p className="text-[10px] text-muted-foreground">
-                            {locationDetectingBg 
+                            {(locationDetectingBg || detectingLoc) 
                               ? "Resolving coordinates..." 
                               : existingLocation 
                                 ? getDisplayLocation(existingLocation) 
@@ -1097,13 +1062,13 @@ export default function UnifiedKycPortal() {
                         </div>
                       </div>
                       <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                        locationDetectingBg 
+                        (locationDetectingBg || detectingLoc) 
                           ? "bg-amber-500/10 text-amber-500 animate-pulse" 
                           : existingLocation 
                             ? "bg-emerald-500/10 text-emerald-500" 
                             : "bg-rose-500/10 text-rose-500"
                       }`}>
-                        {locationDetectingBg ? "RESOLVING" : existingLocation ? "RESOLVED" : "FAILED"}
+                        {(locationDetectingBg || detectingLoc) ? "RESOLVING" : existingLocation ? "RESOLVED" : "FAILED"}
                       </span>
                     </div>
 
@@ -1658,7 +1623,7 @@ export default function UnifiedKycPortal() {
                   </div>
 
                   <div className="flex gap-4 max-w-xs mx-auto">
-                    <Button onClick={handleReset} className="w-full bg-rose-600 hover:bg-rose-500 text-white font-semibold cursor-pointer border-none">
+                    <Button onClick={handleReVerifyLocation} className="w-full bg-rose-600 hover:bg-rose-500 text-white font-semibold cursor-pointer border-none">
                       Re-Verify Location
                     </Button>
                   </div>
