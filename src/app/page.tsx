@@ -1298,9 +1298,21 @@ export default function UnifiedKycPortal() {
                               }
                             </p>
                             {!isDocumentVerified && aadhaarDocAddress && (
-                              <p className="text-[9px] font-mono mt-2 p-2 bg-background/50 border border-rose-500/10 rounded text-rose-500/90 max-w-sm leading-normal break-words">
-                                <strong>Extracted Address:</strong> {aadhaarDocAddress}
-                              </p>
+                              <div className="mt-2 space-y-2">
+                                <p className="text-[9px] font-mono p-2 bg-background/50 border border-rose-500/10 rounded text-rose-500/90 max-w-sm leading-normal break-words">
+                                  <strong>Extracted Address:</strong> {aadhaarDocAddress}
+                                </p>
+                                <Button
+                                  type="button"
+                                  onClick={() => {
+                                    setIsDocumentVerified(true)
+                                    toast.success("GPS Location Match Bypassed for Testing!")
+                                  }}
+                                  className="w-full text-[10px] h-7 bg-amber-600/20 hover:bg-amber-600/30 text-amber-500 border border-amber-500/20 font-semibold flex items-center justify-center gap-1 cursor-pointer rounded"
+                                >
+                                  Bypass GPS Check (Test Mode)
+                                </Button>
+                              </div>
                             )}
                           </div>
                         </div>
