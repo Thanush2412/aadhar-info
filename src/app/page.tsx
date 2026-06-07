@@ -594,11 +594,6 @@ export default function UnifiedKycPortal() {
       return
     }
 
-    if (!isPanValid) {
-      toast.error("Invalid PAN number format")
-      return
-    }
-
     if (!typedAddress.trim()) {
       toast.error("Please enter your residential address")
       return
@@ -1692,7 +1687,7 @@ export default function UnifiedKycPortal() {
                         <Lock className="h-6 w-6 text-rose-700 dark:text-rose-500 animate-pulse animate-duration-1000" />
                         <p>Application Form Locked</p>
                         <p className="text-[10px] font-normal text-muted-foreground max-w-sm mt-1 leading-normal">
-                          Please upload screenshots of your Aadhaar and PAN cards. Once both document addresses are verified to match your physical GPS location, the application form will unlock.
+                          Please upload a screenshot of your Aadhaar card. Once your Aadhaar address is verified to align with your physical GPS location, the application form will unlock.
                         </p>
                       </div>
                     )}
