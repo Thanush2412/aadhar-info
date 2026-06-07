@@ -63,9 +63,11 @@ export default function LocationDetector({
         
         let houseNumber = ""
         let road = ""
-        let sublocality = ""
         let neighborhood = ""
-        let city = ""
+        let district = ""
+        let subdistrict = ""
+        let locality = ""
+        let sublocalities: string[] = []
         let state = ""
         let postcode = ""
         
@@ -80,11 +82,15 @@ export default function LocationDetector({
           } else if (types.includes("route")) {
             road = name
           } else if (types.some(t => t.startsWith("sublocality"))) {
-            if (!sublocality) sublocality = name
+            sublocalities.push(name)
           } else if (types.includes("neighborhood")) {
             neighborhood = name
           } else if (types.includes("locality")) {
-            city = name
+            locality = name
+          } else if (types.includes("administrative_area_level_3")) {
+            subdistrict = name
+          } else if (types.includes("administrative_area_level_2")) {
+            district = name
           } else if (types.includes("administrative_area_level_1")) {
             state = name
           } else if (types.includes("postal_code")) {
@@ -97,11 +103,14 @@ export default function LocationDetector({
           }
         }
 
-        if (!city) {
-          const districtComp = comps.find((c: any) =>
-            c.types.includes("administrative_area_level_2") || c.types.includes("administrative_area_level_3")
-          )
-          if (districtComp) city = districtComp.long_name
+        // Determine the main city/district (prefer administrative_area_level_2 for main cities in India)
+        let city = locality || district || subdistrict || ""
+        if (district && district !== city) {
+          // If we have a distinct district, treat the smaller locality as a sub-locality
+          if (locality && locality !== district) {
+            sublocalities.unshift(locality)
+          }
+          city = district
         }
 
         if (city && city !== "Unknown") candidateSet.add(city)
@@ -117,7 +126,7 @@ export default function LocationDetector({
         }
 
         const candidates = Array.from(candidateSet)
-        const streetInfo = [road, sublocality, neighborhood].filter(Boolean).join(", ")
+        const streetInfo = [road, sublocalities.join(", "), neighborhood].filter(Boolean).join(", ")
         
         const shouldFill = fillFormFields || (!addrCity && !addrState && !addrPin)
         if (shouldFill) {
