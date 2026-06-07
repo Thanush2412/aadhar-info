@@ -15,7 +15,12 @@ function doPost(e) {
       var blob = Utilities.newBlob(fileBytes, payload.mimeType, payload.filename);
       
       var file = folder.createFile(blob);
-      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      try {
+        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      } catch (sharingError) {
+        // Workspace / Organization account policies might block sharing files outside the domain.
+        // We catch it here so the upload doesn't fail and still returns the file URL successfully.
+      }
       
       return ContentService.createTextOutput(JSON.stringify({
         success: true,
