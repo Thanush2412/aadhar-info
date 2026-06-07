@@ -405,8 +405,8 @@ export default function UnifiedKycPortal() {
             postcode = name
           }
 
-          // Add every meaningful component as a candidate (excludes country, postal_code, state)
-          const skipTypes = ["country", "postal_code", "administrative_area_level_1", "premise", "subpremise", "street_number", "house_number", "building", "route"]
+          // Add every meaningful component as a candidate (excludes country, postal_code, route, building)
+          const skipTypes = ["country", "postal_code", "premise", "subpremise", "street_number", "house_number", "building", "route"]
           if (!types.some(t => skipTypes.includes(t)) && name && name.length > 2) {
             candidateSet.add(name)
           }
@@ -430,8 +430,8 @@ export default function UnifiedKycPortal() {
         if (formattedAddr) {
           formattedAddr.split(",").forEach((seg: string) => {
             const s = seg.trim()
-            // Skip numeric-only segments (postcodes) and very short/long segments
-            if (s && s.length > 2 && s.length < 60 && !/^\d+$/.test(s) && !["India"].includes(s)) {
+            // Skip numeric-only segments (postcodes) and very short segments
+            if (s && s.length > 2 && s.length < 60 && !/^\d+$/.test(s)) {
               candidateSet.add(s)
             }
           })
@@ -496,19 +496,22 @@ export default function UnifiedKycPortal() {
     return null
   }
 
-  const autoDetectLocation = () => {
+  // Single unified location detector — identical logic to background GPS watcher
+  // fillFormFields=true: auto-fills address inputs (Re-verify button)
+  // fillFormFields=false: only updates existingLocation state (background watcher)
+  const triggerLocationDetect = (fillFormFields: boolean) => {
     setDetectingLoc(true)
     setLocationError("")
 
     const runIpFallback = async () => {
-      const details = await performIpGeocoding(true)
+      const details = await performIpGeocoding(fillFormFields)
       if (details) {
-        toast.success("Location resolved via IP Geolocation!", {
-          description: `Filled address for: ${details.city}, ${details.state}`
+        if (fillFormFields) toast.success("Location resolved via IP!", {
+          description: `${details.city}, ${details.state}`
         })
       } else {
         toast.error("Location detection failed", {
-          description: "Please check your internet connection or choose city manually."
+          description: "Check internet connection or enter city manually."
         })
       }
       setDetectingLoc(false)
@@ -519,51 +522,32 @@ export default function UnifiedKycPortal() {
     if (isInsecureNetwork) {
       runIpFallback()
     } else if (navigator.geolocation) {
-      const options = {
-        enableHighAccuracy: true,
-        timeout: 8000,
-        maximumAge: 0
-      }
-
+      // Exact same options as background GPS watcher
       navigator.geolocation.getCurrentPosition(
         async (position) => {
-          const details = await performGeocoding(position.coords.latitude, position.coords.longitude, true)
+          const details = await performGeocoding(position.coords.latitude, position.coords.longitude, fillFormFields)
           if (!details) {
             await runIpFallback()
           } else {
-            toast.success("Location coordinates resolved!", {
-              description: `Filled address for: ${details.city}, ${details.state}`
+            if (fillFormFields) toast.success("Coordinates resolved!", {
+              description: `${details.city}, ${details.state}`
             })
             setDetectingLoc(false)
           }
         },
         async (error) => {
-          console.warn("GPS Geolocation failed, trying low accuracy fallback...", error.message)
-          options.enableHighAccuracy = false
-          navigator.geolocation.getCurrentPosition(
-            async (pos) => {
-              const details = await performGeocoding(pos.coords.latitude, pos.coords.longitude, true)
-              if (!details) await runIpFallback()
-              else {
-                toast.success("Location coordinates resolved!", {
-                  description: `Filled address for: ${details.city}, ${details.state}`
-                })
-                setDetectingLoc(false)
-              }
-            },
-            async (err) => {
-              console.warn("Low accuracy GPS failed, falling back to IP Geolocation:", err.message)
-              await runIpFallback()
-            },
-            options
-          )
+          console.warn("GPS failed, falling back to IP:", error.message)
+          await runIpFallback()
         },
-        options
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       )
     } else {
       runIpFallback()
     }
   }
+
+  // Keep autoDetectLocation as alias so existing callers still work
+  const autoDetectLocation = () => triggerLocationDetect(true)
 
   // Send e-KYC Data to Backend API
   // Send e-KYC Data to Backend API
@@ -1001,7 +985,7 @@ export default function UnifiedKycPortal() {
     setStep(1)
     setVerificationError(null)
     setExistingLocation("")
-    autoDetectLocation()
+    triggerLocationDetect(true)
   }
 
   const isFormValid = () => {
@@ -1388,7 +1372,7 @@ export default function UnifiedKycPortal() {
                               type="button" 
                               variant="outline" 
                               size="sm" 
-                              onClick={autoDetectLocation}
+                              onClick={() => triggerLocationDetect(true)}
                               disabled={detectingLoc}
                               className="text-[10px] h-7 border-rose-800/30 text-rose-500 hover:bg-rose-500/10 flex items-center gap-1 cursor-pointer"
                             >
