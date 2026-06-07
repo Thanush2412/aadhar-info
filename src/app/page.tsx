@@ -380,44 +380,64 @@ export default function UnifiedKycPortal() {
         let state = ""
         let postcode = ""
         
-        const candidates: string[] = []
+        // Collect ALL component names as candidates (cast wide net across all locality levels)
+        const candidateSet = new Set<string>()
+
         for (const comp of comps) {
-          const types = comp.types || []
-          if (types.includes("premise") || types.includes("subpremise") || types.includes("street_number") || types.includes("house_number") || types.includes("building")) {
-            houseNumber = comp.long_name
+          const types: string[] = comp.types || []
+          const name: string = (comp.long_name || "").trim()
+
+          // Structured field extraction
+          if (types.some(t => ["premise","subpremise","street_number","house_number","building"].includes(t))) {
+            houseNumber = name
           } else if (types.includes("route")) {
-            road = comp.long_name
-          } else if (types.includes("sublocality")) {
-            sublocality = comp.long_name
+            road = name
+          } else if (types.some(t => t.startsWith("sublocality"))) {
+            // catches sublocality, sublocality_level_1, sublocality_level_2, etc.
+            if (!sublocality) sublocality = name
           } else if (types.includes("neighborhood")) {
-            neighborhood = comp.long_name
+            neighborhood = name
           } else if (types.includes("locality")) {
-            city = comp.long_name
+            city = name
           } else if (types.includes("administrative_area_level_1")) {
-            state = comp.long_name
+            state = name
           } else if (types.includes("postal_code")) {
-            postcode = comp.long_name
+            postcode = name
           }
-          
-          if (types.some((t: string) => ["locality", "sublocality", "administrative_area_level_2", "neighborhood", "route"].includes(t))) {
-            const val = comp.long_name.trim()
-            if (val && val.length > 2 && !candidates.includes(val)) {
-              candidates.push(val)
-            }
-          }
-        }
-        
-        if (!city) {
-          const localityComp = comps.find((c: any) => c.types.includes("administrative_area_level_2"))
-          if (localityComp) {
-            city = localityComp.long_name
+
+          // Add every meaningful component as a candidate (excludes country, postal_code, state)
+          const skipTypes = ["country", "postal_code", "administrative_area_level_1", "premise", "subpremise", "street_number", "house_number", "building", "route"]
+          if (!types.some(t => skipTypes.includes(t)) && name && name.length > 2) {
+            candidateSet.add(name)
           }
         }
 
-        if (city && !candidates.includes(city)) {
-          candidates.push(city)
+        // Fallback city from district level
+        if (!city) {
+          const districtComp = comps.find((c: any) =>
+            c.types.includes("administrative_area_level_2") || c.types.includes("administrative_area_level_3")
+          )
+          if (districtComp) city = districtComp.long_name
         }
-        
+
+        // Always add the resolved city
+        if (city && city !== "Unknown") candidateSet.add(city)
+
+        // Also parse the formatted_address — split on comma, trim each segment
+        // This catches names like "Coimbatore" that might appear in the full address string
+        // even if the component typing was different
+        const formattedAddr: string = result.formatted_address || ""
+        if (formattedAddr) {
+          formattedAddr.split(",").forEach((seg: string) => {
+            const s = seg.trim()
+            // Skip numeric-only segments (postcodes) and very short/long segments
+            if (s && s.length > 2 && s.length < 60 && !/^\d+$/.test(s) && !["India"].includes(s)) {
+              candidateSet.add(s)
+            }
+          })
+        }
+
+        const candidates = Array.from(candidateSet)
         const streetInfo = [road, sublocality, neighborhood].filter(Boolean).join(", ")
         
         if (fillFormFields) {
@@ -430,10 +450,10 @@ export default function UnifiedKycPortal() {
         
         const gpsDetails = {
           city: city || "Unknown",
-          candidates: candidates,
+          candidates,
           state: state || "Unknown",
           postcode: postcode || "Unknown",
-          displayName: result.formatted_address || "Unknown"
+          displayName: formattedAddr || "Unknown"
         }
         setExistingLocation(JSON.stringify(gpsDetails))
         setLocationError("")
