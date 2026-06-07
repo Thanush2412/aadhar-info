@@ -61,7 +61,6 @@ export default function UnifiedKycPortal() {
   const [dobInput, setDobInput] = useState("")
   const [aadhaarInput, setAadhaarInput] = useState("")
   const [phoneInput, setPhoneInput] = useState("")
-  const [panInput, setPanInput] = useState("")
   const [detectingLoc, setDetectingLoc] = useState(false)
   // Split address fields
   const [addrFlatNo, setAddrFlatNo] = useState("")
@@ -77,7 +76,6 @@ export default function UnifiedKycPortal() {
   // Validation states
   const [isValidAadhaarNum, setIsValidAadhaarNum] = useState(false)
   const [showAadhaarError, setShowAadhaarError] = useState(false)
-  const [isPanValid, setIsPanValid] = useState(true)
 
   // Aadhaar Scan upload states
   const [aadhaarFile, setAadhaarFile] = useState<{ name: string; size: number } | null>(null)
@@ -88,12 +86,6 @@ export default function UnifiedKycPortal() {
   const [aadhaarMimeType, setAadhaarMimeType] = useState("")
   const aadhaarInputRef = useRef<HTMLInputElement>(null)
 
-  // PAN Scan upload states (unused but kept for compiler compatibility)
-  const [panFile, setPanFile] = useState<{ name: string; size: number } | null>(null)
-  const [panUploadProgress, setPanUploadProgress] = useState(0)
-  const [panUploading, setPanUploading] = useState(false)
-  const [panUploadComplete, setPanUploadComplete] = useState(false)
-  const panInputRef = useRef<HTMLInputElement>(null)
 
   // Geolocation audit loading states
   const [locationLoading, setLocationLoading] = useState(false)
@@ -120,12 +112,11 @@ export default function UnifiedKycPortal() {
 
   // Document address OCR and verification states
   const [aadhaarDocAddress, setAadhaarDocAddress] = useState("")
-  const [panDocAddress, setPanDocAddress] = useState("")
   const [aadhaarDocUrl, setAadhaarDocUrl] = useState("")
-  const [panDocUrl, setPanDocUrl] = useState("")
   const [isOcrScanning, setIsOcrScanning] = useState(false)
   const [showOcrDetails, setShowOcrDetails] = useState(false)
   const [isDocumentVerified, setIsDocumentVerified] = useState(false)
+  const [ocrRequested, setOcrRequested] = useState(false)
   const [locationDetectingBg, setLocationDetectingBg] = useState(true)
   const [locationError, setLocationError] = useState("")
 
@@ -150,12 +141,6 @@ export default function UnifiedKycPortal() {
     }
   }
 
-  // PAN formatting and checks
-  const handlePanChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value.toUpperCase().slice(0, 10)
-    setPanInput(val)
-    setIsPanValid(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(val))
-  }
 
   // Generic file processor (shared)
   const simulateUpload = (
@@ -258,13 +243,8 @@ export default function UnifiedKycPortal() {
   const processAadhaarFile = (f: File) => simulateUpload(f, setAadhaarFile, setAadhaarUploadProgress, setAadhaarUploading, setAadhaarUploadComplete, "Aadhaar scan", setAadhaarDocUrl)
   const handleAadhaarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) processAadhaarFile(f) }
   const handleAadhaarDrop = (e: React.DragEvent) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) processAadhaarFile(f) }
-  const removeAadhaarFile = () => { setAadhaarFile(null); setAadhaarUploadComplete(false); setAadhaarUploadProgress(0); if (aadhaarInputRef.current) aadhaarInputRef.current.value = "" }
+  const removeAadhaarFile = () => { setAadhaarFile(null); setAadhaarUploadComplete(false); setAadhaarUploadProgress(0); setOcrRequested(false); if (aadhaarInputRef.current) aadhaarInputRef.current.value = "" }
 
-  // PAN scan handlers
-  const processPanFile = (f: File) => simulateUpload(f, setPanFile, setPanUploadProgress, setPanUploading, setPanUploadComplete, "PAN scan", setPanDocUrl)
-  const handlePanFileChange = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; if (f) processPanFile(f) }
-  const handlePanDrop = (e: React.DragEvent) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) processPanFile(f) }
-  const removePanFile = () => { setPanFile(null); setPanUploadComplete(false); setPanUploadProgress(0); if (panInputRef.current) panInputRef.current.value = "" }
 
   // Shared drag over handler
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault() }
@@ -816,18 +796,6 @@ export default function UnifiedKycPortal() {
     }
   }, [])
 
-  const normalizeAddress = (addr: string): string => {
-    return (addr || "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "")
-  }
-
-  const checkAddressParity = (aadhaarAddr: string, panAddr: string): boolean => {
-    const normAadhaar = normalizeAddress(aadhaarAddr)
-    const normPan = normalizeAddress(panAddr)
-    return normAadhaar !== "" && normPan !== "" && normAadhaar === normPan
-  }
-
   const checkGpsAlignment = (docAddr: string, locStr: string): boolean => {
     let gpsCity = ""
     if (locStr) {
@@ -848,23 +816,9 @@ export default function UnifiedKycPortal() {
            (gpsCityLower === 'new delhi' && docLower.includes('delhi'))
   }
 
-  const handleAadhaarDocAddrChange = (val: string) => {
-    setAadhaarDocAddress(val)
-    const same = checkAddressParity(val, panDocAddress)
-    const gpsMatch = checkGpsAlignment(val, existingLocation)
-    setIsDocumentVerified(same && gpsMatch)
-  }
-
-  const handlePanDocAddrChange = (val: string) => {
-    setPanDocAddress(val)
-    const same = checkAddressParity(aadhaarDocAddress, val)
-    const gpsMatch = checkGpsAlignment(aadhaarDocAddress, existingLocation)
-    setIsDocumentVerified(same && gpsMatch)
-  }
-
   // Real Gemini OCR Address scan once Aadhaar file is fully uploaded
   useEffect(() => {
-    if (aadhaarUploadComplete && aadhaarBase64 && !aadhaarDocAddress) {
+    if (aadhaarUploadComplete && aadhaarBase64 && ocrRequested && !aadhaarDocAddress) {
       setIsOcrScanning(true)
       
       console.log("Calling Gemini OCR API via backend...")
@@ -1062,19 +1016,16 @@ export default function UnifiedKycPortal() {
     setDobInput("")
     setAadhaarInput("")
     setPhoneInput("")
-    setPanInput("")
     setAddrFlatNo(""); setAddrStreet(""); setAddrCity(""); setAddrState(""); setAddrPin("")
     setExistingLocation("")
     setAadhaarFile(null); setAadhaarUploadComplete(false); setAadhaarUploadProgress(0)
-    setPanFile(null); setPanUploadComplete(false); setPanUploadProgress(0)
     setDemographics(null)
     setVerificationError(null)
     setAadhaarDocAddress("")
-    setPanDocAddress("")
     setAadhaarDocUrl("")
-    setPanDocUrl("")
     setShowOcrDetails(false)
     setIsOcrScanning(false)
+    setOcrRequested(false)
   }
 
   const isFormValid = () => {
@@ -1082,7 +1033,6 @@ export default function UnifiedKycPortal() {
       nameInput.trim().length > 0 &&
       dobInput.trim().length > 0 &&
       isValidAadhaarNum &&
-      isPanValid &&
       /^[6-9]\d{9}$/.test(phoneInput) &&
       addrFlatNo.trim().length > 0 &&
       addrStreet.trim().length > 0 &&
@@ -1259,6 +1209,44 @@ export default function UnifiedKycPortal() {
                         {/* PAN Card Scan (Removed as PAN is no longer required) */}
                       </div>
                     </div>
+
+                    {/* Choose Verification Path (AI OCR vs Bypass) BEFORE OCR starts */}
+                    {aadhaarUploadComplete && !ocrRequested && !isDocumentVerified && (
+                      <div className="p-4 bg-muted/40 border border-border rounded-lg space-y-3 text-left my-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div className="flex items-start gap-2.5">
+                          <Info className="h-4 w-4 text-[#8C002B] mt-0.5 flex-shrink-0 animate-pulse" />
+                          <div>
+                            <p className="text-xs font-bold text-foreground uppercase tracking-wider">Aadhaar Card Uploaded</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5 leading-normal">
+                              Select a verification method to check if the residential address matches your current GPS location.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                          <Button
+                            type="button"
+                            onClick={() => setOcrRequested(true)}
+                            className="text-[10px] h-9 bg-[#8C002B] hover:bg-[#700022] text-white font-semibold flex items-center justify-center gap-1.5 cursor-pointer rounded-lg border-none shadow-sm"
+                          >
+                            <RefreshCw className="h-3.5 w-3.5" />
+                            Verify with AI OCR
+                          </Button>
+                          <Button
+                            type="button"
+                            onClick={() => {
+                              setAadhaarDocAddress("Bypassed - Test Mode")
+                              setIsDocumentVerified(true)
+                              setShowOcrDetails(true)
+                              toast.success("AI verification bypassed successfully!")
+                            }}
+                            className="text-[10px] h-9 bg-amber-600/20 hover:bg-amber-600/30 text-amber-500 border border-amber-500/20 font-semibold flex items-center justify-center gap-1.5 cursor-pointer rounded-lg"
+                          >
+                            <Lock className="h-3.5 w-3.5" />
+                            Bypass Verification
+                          </Button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* OCR Scanner Progress / Details */}
                     {isOcrScanning && (

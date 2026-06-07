@@ -554,10 +554,9 @@ export default function AdminPanel() {
                   <TableRow>
                     <TableHead className="font-bold text-foreground">Date & Time</TableHead>
                     <TableHead className="font-bold text-foreground">Applicant Details</TableHead>
-                    <TableHead className="font-bold text-foreground">PAN / Email</TableHead>
+                    <TableHead className="font-bold text-foreground">Email</TableHead>
                     <TableHead className="font-bold text-foreground">Map Location</TableHead>
                     <TableHead className="font-bold text-foreground">Aadhaar Doc</TableHead>
-                    <TableHead className="font-bold text-foreground">PAN Doc</TableHead>
                     <TableHead className="font-bold text-foreground">Audit Status</TableHead>
                     <TableHead className="text-right font-bold text-foreground">Actions</TableHead>
                   </TableRow>
@@ -620,10 +619,7 @@ export default function AdminPanel() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <div className="font-mono text-xs font-semibold uppercase text-foreground">
-                            {record.panNumber || "N/A"}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground truncate max-w-[130px]">
+                          <div className="text-xs font-semibold text-foreground truncate max-w-[130px]">
                             {record.email || "N/A"}
                           </div>
                         </TableCell>
@@ -633,13 +629,6 @@ export default function AdminPanel() {
                         <TableCell className="text-xs text-foreground max-w-[120px] truncate">
                           {record.aadhaarDocName ? (
                             <span className="text-orange-500 font-semibold">{record.aadhaarDocName}</span>
-                          ) : (
-                            <span className="text-muted-foreground italic text-[10px]">No upload</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs text-foreground max-w-[120px] truncate">
-                          {record.panDocName ? (
-                            <span className="text-blue-500 font-semibold">{record.panDocName}</span>
                           ) : (
                             <span className="text-muted-foreground italic text-[10px]">No upload</span>
                           )}
@@ -865,11 +854,6 @@ export default function AdminPanel() {
                     <p className="font-mono font-semibold text-foreground">+91 {selectedRecord.phoneNumber}</p>
                   </div>
                   
-                  {/* PAN & Email fields */}
-                  <div className="bg-background border border-border rounded-lg p-3 space-y-1">
-                    <p className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">PAN Card Number</p>
-                    <p className="font-mono font-semibold text-foreground uppercase">{selectedRecord.panNumber || "N/A"}</p>
-                  </div>
                   <div className="bg-background border border-border rounded-lg p-3 space-y-1">
                     <p className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Email Address</p>
                     <p className="font-semibold text-foreground truncate">{selectedRecord.email || "N/A"}</p>
@@ -891,19 +875,13 @@ export default function AdminPanel() {
                     </div>
                   )}
 
-                  {/* Document uploads */}
                   <div className="bg-background border border-border rounded-lg p-3 space-y-2 col-span-2">
                     <p className="text-muted-foreground text-[10px] uppercase font-bold tracking-wider">Uploaded Documents</p>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2">
                       <div className="space-y-0.5">
                         <p className="text-[9px] uppercase font-bold text-orange-500 tracking-wider">Aadhaar Scan</p>
                         <p className="font-mono text-xs font-semibold text-foreground">{selectedRecord.aadhaarDocName || <span className="text-muted-foreground italic">Not uploaded</span>}</p>
                         {selectedRecord.aadhaarDocSize && <p className="text-[9px] text-muted-foreground">{selectedRecord.aadhaarDocSize}</p>}
-                      </div>
-                      <div className="space-y-0.5">
-                        <p className="text-[9px] uppercase font-bold text-blue-500 tracking-wider">PAN Scan</p>
-                        <p className="font-mono text-xs font-semibold text-foreground">{selectedRecord.panDocName || <span className="text-muted-foreground italic">Not uploaded</span>}</p>
-                        {selectedRecord.panDocSize && <p className="text-[9px] text-muted-foreground">{selectedRecord.panDocSize}</p>}
                       </div>
                     </div>
                   </div>

@@ -46,13 +46,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate PAN if provided
-    if (panNumber && !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(panNumber.toUpperCase())) {
-      return NextResponse.json(
-        { success: false, message: 'Invalid PAN Number format.' },
-        { status: 400 }
-      );
-    }
 
     // Helper to normalize addresses (alphanumeric only)
     const normalizeAddress = (addr: string): string => {
