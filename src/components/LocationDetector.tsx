@@ -14,19 +14,8 @@ interface LocationDetectorProps {
   locationDetectingBg: boolean
   setLocationDetectingBg: (val: boolean) => void
   
-  // Form values/setters
-  addrCity: string
-  addrState: string
-  addrPin: string
-  setAddrFlatNo: (v: string) => void
-  setAddrStreet: (v: string) => void
-  setAddrCity: (v: string) => void
-  setAddrPin: (v: string) => void
-  setAddrState: (v: string) => void
-
   // Manual refresh triggers
   refreshTrigger: number
-  isAddressEdited: boolean
 }
 
 export default function LocationDetector({
@@ -38,23 +27,14 @@ export default function LocationDetector({
   setDetectingLoc,
   locationDetectingBg,
   setLocationDetectingBg,
-  addrCity,
-  addrState,
-  addrPin,
-  setAddrFlatNo,
-  setAddrStreet,
-  setAddrCity,
-  setAddrPin,
-  setAddrState,
-  refreshTrigger,
-  isAddressEdited
+  refreshTrigger
 }: LocationDetectorProps) {
   
   const isInitialMount = useRef(true)
   const lastCoords = useRef<{ lat: number; lng: number } | null>(null)
 
   // 1. Reverse Geocoding with Ola Maps
-  const performGeocoding = async (lat: number, lng: number, fillFormFields: boolean) => {
+  const performGeocoding = async (lat: number, lng: number) => {
     try {
       const res = await fetch(`/api/verify/reverse-geocode?lat=${lat}&lng=${lng}`)
       const geoData = await res.json()
@@ -63,13 +43,9 @@ export default function LocationDetector({
         const result = results[0]
         const comps = result.address_components || []
         
-        let houseNumber = ""
-        let road = ""
-        let neighborhood = ""
         let district = ""
         let subdistrict = ""
         let locality = ""
-        let sublocalities: string[] = []
         let state = ""
         let postcode = ""
         
@@ -79,15 +55,7 @@ export default function LocationDetector({
           const types: string[] = comp.types || []
           const name: string = (comp.long_name || "").trim()
 
-          if (types.some(t => ["premise","subpremise","street_number","house_number","building"].includes(t))) {
-            houseNumber = name
-          } else if (types.includes("route") || types.includes("street_address")) {
-            road = name
-          } else if (types.some(t => t.startsWith("sublocality"))) {
-            sublocalities.push(name)
-          } else if (types.includes("neighborhood")) {
-            neighborhood = name
-          } else if (types.includes("locality")) {
+          if (types.includes("locality")) {
             locality = name
           } else if (types.includes("administrative_area_level_3")) {
             subdistrict = name
@@ -108,10 +76,6 @@ export default function LocationDetector({
         // Determine the main city/district (prefer administrative_area_level_2 for main cities in India)
         let city = locality || district || subdistrict || ""
         if (district && district !== city) {
-          // If we have a distinct district, treat the smaller locality as a sub-locality
-          if (locality && locality !== district) {
-            sublocalities.unshift(locality)
-          }
           city = district
         }
 
@@ -128,16 +92,6 @@ export default function LocationDetector({
         }
 
         const candidates = Array.from(candidateSet)
-        const streetInfo = [road, sublocalities.join(", "), neighborhood].filter(Boolean).join(", ")
-        
-        const shouldFill = fillFormFields || !isAddressEdited
-        if (shouldFill) {
-          setAddrFlatNo(houseNumber)
-          setAddrStreet(streetInfo)
-          setAddrCity(city)
-          setAddrPin(postcode)
-          setAddrState(state)
-        }
         
         const gpsDetails = {
           city: city || "Unknown",
@@ -157,7 +111,7 @@ export default function LocationDetector({
   }
 
   // 2. Unified Location Detector — only uses browser Geolocation API
-  const triggerLocationDetect = async (fillFormFields: boolean): Promise<any> => {
+  const triggerLocationDetect = async (): Promise<any> => {
     setDetectingLoc(true)
     setLocationError("")
 
@@ -183,12 +137,12 @@ export default function LocationDetector({
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           lastCoords.current = { lat: position.coords.latitude, lng: position.coords.longitude }
-          const details = await performGeocoding(position.coords.latitude, position.coords.longitude, fillFormFields)
+          const details = await performGeocoding(position.coords.latitude, position.coords.longitude)
           if (!details) {
             setLocationError("Failed to resolve GPS coordinates via Ola Maps.")
             toast.error("Location resolution failed.")
           } else {
-            if (fillFormFields) toast.success("Coordinates resolved!", {
+            toast.success("Coordinates resolved!", {
               description: `${details.city}, ${details.state}`
             })
             setLocationError("")
@@ -227,7 +181,7 @@ export default function LocationDetector({
         async (position) => {
           console.log("Real-time GPS update:", position.coords.latitude, position.coords.longitude, "accuracy:", position.coords.accuracy)
           lastCoords.current = { lat: position.coords.latitude, lng: position.coords.longitude }
-          const details = await performGeocoding(position.coords.latitude, position.coords.longitude, false)
+          const details = await performGeocoding(position.coords.latitude, position.coords.longitude)
           if (!details) {
             setLocationError("Background Ola Maps geocoding failed.")
           } else {
@@ -263,11 +217,11 @@ export default function LocationDetector({
     if (refreshTrigger > 0) {
       if (lastCoords.current) {
         setDetectingLoc(true)
-        performGeocoding(lastCoords.current.lat, lastCoords.current.lng, true).finally(() => {
+        performGeocoding(lastCoords.current.lat, lastCoords.current.lng).finally(() => {
           setDetectingLoc(false)
         })
       } else {
-        triggerLocationDetect(true)
+        triggerLocationDetect()
       }
     }
   }, [refreshTrigger])

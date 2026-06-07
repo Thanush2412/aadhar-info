@@ -63,17 +63,11 @@ export default function UnifiedKycPortal() {
   const [aadhaarInput, setAadhaarInput] = useState("")
   const [phoneInput, setPhoneInput] = useState("")
   const [detectingLoc, setDetectingLoc] = useState(false)
-  // Split address fields
-  const [addrFlatNo, setAddrFlatNo] = useState("")
-  const [addrStreet, setAddrStreet] = useState("")
-  const [addrCity, setAddrCity] = useState("")
-  const [addrState, setAddrState] = useState("")
-  const [addrPin, setAddrPin] = useState("")
   const [existingLocation, setExistingLocation] = useState("") // Stores background resolved location city
-  const [isAddressEdited, setIsAddressEdited] = useState(false)
 
   // Computed full address for API submission
-  const typedAddress = [addrFlatNo, addrStreet, addrCity, addrState, addrPin].filter(Boolean).join(", ")
+  const parsedLoc = existingLocation ? (() => { try { return JSON.parse(existingLocation) } catch { return null } })() : null;
+  const typedAddress = parsedLoc ? parsedLoc.displayName : "";
   
   // Validation states
   const [isValidAadhaarNum, setIsValidAadhaarNum] = useState(false)
@@ -92,11 +86,6 @@ export default function UnifiedKycPortal() {
   // Geolocation audit loading states
   const [locationLoading, setLocationLoading] = useState(false)
 
-  // City autocomplete states (Ola Maps)
-  const [citySuggestions, setCitySuggestions] = useState<any[]>([])
-  const [cityLoading, setCityLoading] = useState(false)
-  const [showCitySuggestions, setShowCitySuggestions] = useState(false)
-  const cityDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // OTP Verification states
   const [showOtpModal, setShowOtpModal] = useState(false)
@@ -257,149 +246,7 @@ export default function UnifiedKycPortal() {
   // Shared drag over handler
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault() }
 
-  // City autocomplete via Nominatim (free, no API key)
-  const fetchCitySuggestions = async (query: string) => {
-    if (query.trim().length < 3) { setCitySuggestions([]); return }
-    setCityLoading(true)
-    try {
-      const res = await fetch(
-        `/api/verify/autocomplete?input=${encodeURIComponent(query)}`
-      )
-      const data = await res.json()
-      setCitySuggestions(data.predictions || [])
-      setShowCitySuggestions(true)
-    } catch {
-      setCitySuggestions([])
-    } finally {
-      setCityLoading(false)
-    }
-  }
 
-  const handleCityInputChange = (val: string) => {
-    setAddrCity(val)
-    if (cityDebounceRef.current) clearTimeout(cityDebounceRef.current)
-    cityDebounceRef.current = setTimeout(() => fetchCitySuggestions(val), 400)
-  }
-
-  const selectCitySuggestion = async (item: any) => {
-    const placeId = item.place_id
-    try {
-      const res = await fetch(`/api/verify/details?place_id=${placeId}`)
-      const detailData = await res.json()
-      if (detailData && detailData.result) {
-        const result = detailData.result
-        const comps = result.address_components || []
-        
-        let district = ""
-        let subdistrict = ""
-        let locality = ""
-        let state = ""
-        let postcode = ""
-        
-        const candidateSet = new Set<string>()
-
-        for (const comp of comps) {
-          const types = comp.types || []
-          const name = (comp.long_name || "").trim()
-          if (types.includes("locality")) {
-            locality = name
-          } else if (types.includes("administrative_area_level_2")) {
-            district = name
-          } else if (types.includes("administrative_area_level_3")) {
-            subdistrict = name
-          } else if (types.includes("administrative_area_level_1")) {
-            state = name
-          } else if (types.includes("postal_code")) {
-            postcode = name
-          }
-
-          const skipTypes = ["country", "postal_code", "premise", "subpremise", "street_number", "house_number", "building", "route", "street_address"]
-          if (!types.some((t: string) => skipTypes.includes(t)) && name && name.length > 2) {
-            candidateSet.add(name)
-          }
-        }
-        
-        let city = locality || district || subdistrict || ""
-        if (district && district !== city) {
-          city = district
-        }
-
-        if (!city) {
-          city = item.structured_formatting?.main_text || item.description.split(",")[0].trim()
-        }
-        if (city && city !== "Unknown") {
-          candidateSet.add(city)
-        }
-
-        if (!state) {
-          const parts = item.description.split(",")
-          if (parts.length > 2) {
-            state = parts[parts.length - 2].trim()
-          }
-        }
-        if (state && state !== "Unknown") {
-          candidateSet.add(state)
-        }
-
-        const formattedAddr: string = result.formatted_address || item.description || ""
-        if (formattedAddr) {
-          formattedAddr.split(",").forEach((seg: string) => {
-            const s = seg.trim()
-            if (s && s.length > 2 && s.length < 60 && !/^\d+$/.test(s)) {
-              candidateSet.add(s)
-            }
-          })
-        }
-        
-        const candidates = Array.from(candidateSet)
-
-        setAddrCity(city)
-        if (state) setAddrState(state)
-        if (postcode) setAddrPin(postcode)
-        
-        const gpsDetails = {
-          city: city || "Unknown",
-          candidates,
-          state: state || "Unknown",
-          postcode: postcode || "Unknown",
-          displayName: formattedAddr || item.description
-        }
-        setExistingLocation(JSON.stringify(gpsDetails))
-      }
-    } catch (e) {
-      console.error("Error fetching place details:", e)
-      const city = item.structured_formatting?.main_text || item.description.split(",")[0].trim()
-      let state = ""
-      const parts = item.description.split(",")
-      if (parts.length > 2) {
-        state = parts[parts.length - 2].trim()
-      }
-      setAddrCity(city)
-      if (state) setAddrState(state)
-
-      const candidateSet = new Set<string>()
-      if (city) candidateSet.add(city)
-      if (state) candidateSet.add(state)
-      parts.forEach((p: string) => {
-        const s = p.trim()
-        if (s && s.length > 2 && s.length < 60 && !/^\d+$/.test(s)) {
-          candidateSet.add(s)
-        }
-      })
-      const candidates = Array.from(candidateSet)
-
-      const gpsDetails = {
-        city,
-        candidates,
-        state: state || "Unknown",
-        postcode: "Unknown",
-        displayName: item.description
-      }
-      setExistingLocation(JSON.stringify(gpsDetails))
-    }
-    setCitySuggestions([])
-    setShowCitySuggestions(false)
-  }
 
   const getDisplayLocation = (locStr: string) => {
     if (!locStr) return "Unknown"
@@ -755,9 +602,7 @@ export default function UnifiedKycPortal() {
     setDobInput("")
     setAadhaarInput("")
     setPhoneInput("")
-    setAddrFlatNo(""); setAddrStreet(""); setAddrCity(""); setAddrState(""); setAddrPin("")
     setExistingLocation("")
-    setIsAddressEdited(false)
     setAadhaarFile(null); setAadhaarUploadComplete(false); setAadhaarUploadProgress(0)
     setDemographics(null)
     setVerificationError(null)
@@ -784,11 +629,7 @@ export default function UnifiedKycPortal() {
       dobInput.trim().length > 0 &&
       isValidAadhaarNum &&
       /^[6-9]\d{9}$/.test(phoneInput) &&
-      addrFlatNo.trim().length > 0 &&
-      addrStreet.trim().length > 0 &&
-      addrCity.trim().length > 0 &&
-      addrState.trim().length > 0 &&
-      /^[1-9][0-9]{5}$/.test(addrPin) &&
+      typedAddress.trim().length > 0 &&
       aadhaarUploadComplete &&
       aadhaarDocAddress.trim().length > 0
     )
@@ -867,16 +708,7 @@ export default function UnifiedKycPortal() {
                       setDetectingLoc={setDetectingLoc}
                       locationDetectingBg={locationDetectingBg}
                       setLocationDetectingBg={setLocationDetectingBg}
-                      addrCity={addrCity}
-                      addrState={addrState}
-                      addrPin={addrPin}
-                      setAddrFlatNo={setAddrFlatNo}
-                      setAddrStreet={setAddrStreet}
-                      setAddrCity={setAddrCity}
-                      setAddrPin={setAddrPin}
-                      setAddrState={setAddrState}
                       refreshTrigger={refreshTrigger}
-                      isAddressEdited={isAddressEdited}
                     />
 
                     {/* Document Scans (Uploaded First) */}
@@ -1167,122 +999,19 @@ export default function UnifiedKycPortal() {
                             </Button>
                           </div>
 
-                          <div className="space-y-1">
-                            <p className="text-[10px] font-medium text-muted-foreground">Flat / House No. &amp; Building Name</p>
-                            <Input
-                              id="flat-no-input"
-                              type="text"
-                              required
-                              value={addrFlatNo}
-                              onChange={(e) => { setAddrFlatNo(e.target.value); setIsAddressEdited(true); }}
-                              placeholder="e.g. Flat 4B, Palm Grove Apartments"
-                              className="bg-background border-border text-foreground text-sm h-10"
-                              autoComplete="new-password"
-                            />
-                          </div>
-
-                          <div className="space-y-1">
-                            <p className="text-[10px] font-medium text-muted-foreground">Street / Locality / Area</p>
-                            <Input
-                              type="text"
-                              required
-                              value={addrStreet}
-                              onChange={(e) => { setAddrStreet(e.target.value); setIsAddressEdited(true); }}
-                              placeholder="e.g. 12, MG Road, Salt Lake Sector V"
-                              className="bg-background border-border text-foreground text-sm h-10"
-                              autoComplete="new-password"
-                            />
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                              <p className="text-[10px] font-medium text-muted-foreground">City / District</p>
-                              <div className="relative">
-                                <Input
-                                  type="text"
-                                  required
-                                  value={addrCity}
-                                  onChange={(e) => { handleCityInputChange(e.target.value); setIsAddressEdited(true); }}
-                                  onFocus={() => citySuggestions.length > 0 && setShowCitySuggestions(true)}
-                                  onBlur={() => setTimeout(() => setShowCitySuggestions(false), 180)}
-                                  placeholder="e.g. Kolkata"
-                                  className="bg-background border-border text-foreground text-sm h-10 pr-8"
-                                  autoComplete="new-password"
-                                />
-                                {cityLoading ? (
-                                  <RefreshCw className="absolute right-2.5 top-3 h-3.5 w-3.5 animate-spin text-muted-foreground" />
-                                ) : addrCity ? (
-                                  <button type="button" onClick={() => { setAddrCity(""); setCitySuggestions([]); setIsAddressEdited(true); }} className="absolute right-2.5 top-3 text-muted-foreground hover:text-foreground">
-                                    <X className="h-3.5 w-3.5" />
-                                  </button>
-                                ) : (
-                                  <MapPin className="absolute right-2.5 top-3 h-3.5 w-3.5 text-muted-foreground" />
-                                )}
-
-                                {showCitySuggestions && citySuggestions.length > 0 && (
-                                  <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-lg shadow-2xl overflow-hidden max-h-52 overflow-y-auto">
-                                    {citySuggestions.map((item: any, idx) => {
-                                      const mainText = item.structured_formatting?.main_text || item.description
-                                      const secondaryText = item.structured_formatting?.secondary_text || ""
-                                      return (
-                                        <button
-                                          key={idx}
-                                          type="button"
-                                          onMouseDown={() => selectCitySuggestion(item)}
-                                          className="w-full text-left px-3 py-2 hover:bg-muted/60 border-b border-border/50 last:border-0 transition"
-                                        >
-                                          <div className="flex items-center gap-2">
-                                            <MapPin className="h-3 w-3 text-amber-500 flex-shrink-0" />
-                                            <div>
-                                              <p className="text-[11px] font-semibold text-foreground leading-tight">{mainText}</p>
-                                              {secondaryText && <p className="text-[9px] text-muted-foreground">{secondaryText}</p>}
-                                            </div>
-                                          </div>
-                                        </button>
-                                      )
-                                    })}
-                                  </div>
-                                )}
-                              </div>
+                          <div className="p-3 bg-muted/30 border border-border rounded-lg flex items-start gap-2">
+                            <MapPin className="h-4 w-4 text-[#8C002B] mt-0.5 flex-shrink-0" />
+                            <div>
+                              <p className="font-semibold text-xs text-foreground mb-1">Current GPS Location</p>
+                              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                {typedAddress || "No location detected. Please re-verify coordinates."}
+                              </p>
                             </div>
-
-                            <div className="space-y-1">
-                              <p className="text-[10px] font-medium text-muted-foreground">PIN Code</p>
-                              <Input
-                                type="text"
-                                required
-                                value={addrPin}
-                                onChange={(e) => { setAddrPin(e.target.value.replace(/\D/g, "").slice(0, 6)); setIsAddressEdited(true); }}
-                                placeholder="e.g. 700091"
-                                maxLength={6}
-                                className={`bg-background border-border text-foreground text-sm h-10 font-mono tracking-widest ${
-                                  addrPin.length === 6 && /^[1-9][0-9]{5}$/.test(addrPin)
-                                    ? "border-emerald-500/70"
-                                    : addrPin.length > 0
-                                      ? "border-rose-400/70"
-                                      : ""
-                                }`}
-                                autoComplete="new-password"
-                              />
-                            </div>
-                          </div>
-
-                           <div className="space-y-1">
-                            <p className="text-[10px] font-medium text-muted-foreground">State</p>
-                            <Input
-                              type="text"
-                              required
-                              value={addrState}
-                              onChange={(e) => { setAddrState(e.target.value); setIsAddressEdited(true); }}
-                              placeholder="e.g. Tamil Nadu"
-                              className="bg-background border-border text-foreground text-sm h-10"
-                              autoComplete="new-password"
-                            />
                           </div>
 
                           <div className="flex items-start gap-1.5 pt-0.5 text-[10px] text-muted-foreground">
                             <Lock className="h-3 w-3 mt-0.5 flex-shrink-0 text-muted-foreground/60" />
-                            <span>Your city will be cross-validated against your registered address details and current GPS location.</span>
+                            <span>Your physical GPS coordinates will be cross-validated against your registered identity records. Manual edits are disabled for security.</span>
                           </div>
 
                           {/* Address Matching Progress/Alerts */}
