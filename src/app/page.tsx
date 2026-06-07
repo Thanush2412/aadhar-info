@@ -499,7 +499,7 @@ export default function UnifiedKycPortal() {
   // Single unified location detector — identical logic to background GPS watcher
   // fillFormFields=true: auto-fills address inputs (Re-verify button)
   // fillFormFields=false: only updates existingLocation state (background watcher)
-  const triggerLocationDetect = (fillFormFields: boolean) => {
+  const triggerLocationDetect = async (fillFormFields: boolean): Promise<any> => {
     setDetectingLoc(true)
     setLocationError("")
 
@@ -515,34 +515,40 @@ export default function UnifiedKycPortal() {
         })
       }
       setDetectingLoc(false)
+      return details
     }
 
     const isInsecureNetwork = typeof window !== "undefined" && !window.isSecureContext && window.location.hostname !== "localhost"
 
     if (isInsecureNetwork) {
-      runIpFallback()
+      return runIpFallback()
     } else if (navigator.geolocation) {
-      // Exact same options as background GPS watcher
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const details = await performGeocoding(position.coords.latitude, position.coords.longitude, fillFormFields)
-          if (!details) {
-            await runIpFallback()
-          } else {
-            if (fillFormFields) toast.success("Coordinates resolved!", {
-              description: `${details.city}, ${details.state}`
-            })
-            setDetectingLoc(false)
-          }
-        },
-        async (error) => {
-          console.warn("GPS failed, falling back to IP:", error.message)
-          await runIpFallback()
-        },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-      )
+      return new Promise((resolve) => {
+        // Exact same options as background GPS watcher
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            const details = await performGeocoding(position.coords.latitude, position.coords.longitude, fillFormFields)
+            if (!details) {
+              const fb = await runIpFallback()
+              resolve(fb)
+            } else {
+              if (fillFormFields) toast.success("Coordinates resolved!", {
+                description: `${details.city}, ${details.state}`
+              })
+              setDetectingLoc(false)
+              resolve(details)
+            }
+          },
+          async (error) => {
+            console.warn("GPS failed, falling back to IP:", error.message)
+            const fb = await runIpFallback()
+            resolve(fb)
+          },
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        )
+      })
     } else {
-      runIpFallback()
+      return runIpFallback()
     }
   }
 
@@ -646,51 +652,21 @@ export default function UnifiedKycPortal() {
     setLoading(true)
     setLocationLoading(true)
 
-    if (existingLocation) {
-      submitVerificationData(cleanAadhaar, existingLocation)
-      return
-    }
-
-    // Background Geolocation checking
-    if (typeof window !== "undefined" && !window.isSecureContext && window.location.hostname !== "localhost") {
-      toast.error("HTTPS Required on Mobile", {
-        description: "Your mobile browser requires a secure HTTPS connection to authorize GPS location permission. Run 'npm run dev-https' or use ngrok."
-      })
-      setLoading(false)
-      setLocationLoading(false)
-      return
-    }
-    if (!navigator.geolocation) {
-      toast.error("Geolocation is not supported by your browser.")
-      setLoading(false)
-      setLocationLoading(false)
-      return
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords
-        const details = await performGeocoding(latitude, longitude, false)
-        if (details) {
-          submitVerificationData(cleanAadhaar, JSON.stringify(details))
-        } else {
-          toast.error("Could not resolve location coordinates.")
-          setLoading(false)
-          setLocationLoading(false)
-        }
-      },
-      (error) => {
-        console.error("Geolocation error:", error.message || error);
-        toast.error("Location permission denied or timed out. GPS access is required for GPS verification.")
-        setLoading(false)
-        setLocationLoading(false)
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0
+    let loc = existingLocation
+    if (!loc) {
+      const details = await triggerLocationDetect(false)
+      if (details) {
+        loc = JSON.stringify(details)
       }
-    )
+    }
+
+    if (loc) {
+      submitVerificationData(cleanAadhaar, loc)
+    } else {
+      toast.error("Location verification is required to proceed.")
+      setLoading(false)
+      setLocationLoading(false)
+    }
   }
 
   // OTP Timer countdown
