@@ -440,7 +440,8 @@ export default function UnifiedKycPortal() {
         const candidates = Array.from(candidateSet)
         const streetInfo = [road, sublocality, neighborhood].filter(Boolean).join(", ")
         
-        if (fillFormFields) {
+        const shouldFill = fillFormFields || (!addrCity && !addrState && !addrPin)
+        if (shouldFill) {
           setAddrFlatNo(houseNumber)
           setAddrStreet(streetInfo)
           setAddrCity(city)
@@ -478,7 +479,8 @@ export default function UnifiedKycPortal() {
           postcode: data.postal || "Unknown",
           displayName: `${data.city || ""}, ${data.region || ""}, ${data.country || ""}`
         }
-        if (fillFormFields) {
+        const shouldFill = fillFormFields || (!addrCity && !addrState && !addrPin)
+        if (shouldFill) {
           setAddrCity(data.city || "")
           setAddrState(data.region || "")
           setAddrPin(data.postal || "")
